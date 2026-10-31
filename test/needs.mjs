@@ -6,7 +6,7 @@ import { T } from '../src/sim/rules.js';
 import { N } from '../src/sim/world.js';
 import { HOURS, YEAR_DAYS } from '../src/sim/climate.js';
 import { heightAt, HALF } from '../src/render/common.js';
-import { newPlayerState, stepNeeds, replayAway, lastHouse, waterAt } from '../src/player/needs.js';
+import { newPlayerState, stepNeeds, replayAway, lastHouse, waterAt, nearHearth, barnCenter } from '../src/player/needs.js';
 
 globalThis.window = { addEventListener() {} };
 globalThis.document = { pointerLockElement: null };
@@ -66,6 +66,26 @@ check('away replay is deterministic', ra === rb && a.x === b.x && a.warmth === b
 const sum = away();
 check('a summer afternoon away is fine', replayAway(eng.world, eng.state, eng.seed, sum, 14 * HOURS + 12, 14 * HOURS + 18, 1, [0, 0]) === null, `warmth ${sum.warmth.toFixed(0)}`);
 check('player state never changes the world', eng.hash() === hashBefore);
+
+{ // Fires: next to a house, a mill's lodge or a farm's barn; not out in a farm's far corner.
+  const add = (type, s, seed) => {
+    for (let y = 40; y < N - 40; y += 2) for (let x = 40; x < N - 40; x += 2) {
+      const e = { tick: eng.state.tick, owner: 1, type, x, y, s, seed };
+      if (!eng.check(e)) { eng.add(e); eng.advanceTo(eng.state.tick + 1); return eng.state.buildings.at(-1); }
+    }
+  };
+  const house = lastHouse(eng.state, 1);
+  check('by the fire next to a house', nearHearth(eng.state, house.x + house.s / 2, house.y + house.s + 1.5));
+  const mill = add(T.MILL, 2, 11);
+  check('by the fire next to a mill', nearHearth(eng.state, mill.x + 1, mill.y + mill.s + 1.5));
+  const farm = add(T.FARM, 4, 12);
+  const [bx, by] = barnCenter(farm);
+  check('by the fire next to a farm barn', nearHearth(eng.state, bx + 1.2, by + 0.8));
+  const far = [farm.x + farm.s / 2 - (bx - farm.x - farm.s / 2), farm.y + farm.s / 2 - (by - farm.y - farm.s / 2)]; // the opposite corner
+  const others = eng.state.buildings.filter((b) => b.alive && b !== farm && b.type !== T.FARM);
+  const clear = others.every((b) => Math.hypot(Math.max(b.x - far[0], 0, far[0] - b.x - b.s), Math.max(b.y - far[1], 0, far[1] - b.y - b.s)) > 4);
+  if (clear) check('no fire out in the far corner of a field', !nearHearth(eng.state, far[0], far[1]));
+}
 
 { // Save codes carry the player state, and old codes without it still load.
   const ps = { x: -12.34, z: 56.7, yaw: 1.234, warmth: 64, wet: 0.5 };

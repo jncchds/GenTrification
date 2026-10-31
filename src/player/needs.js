@@ -8,14 +8,16 @@
 //
 //  - Cold air, wind, being wet and being in water make you lose warmth.
 //  - Rain and snow slowly soak you; wading soaks you fast, swimming at once. You dry off in warm air.
-//  - Standing next to any house warms and dries you quickly (a hearth nearby).
+//  - Standing next to a house, a mill's lodge or a farm's barn warms and dries you quickly (a fire nearby).
 //  - Cold slows you down. If warmth runs out you wake up by the fire at your last built house.
 import { weather, tempAt } from '../sim/climate.js';
 import { T } from '../sim/rules.js';
 import { N, V, WATER } from '../sim/world.js';
+import { Rng } from '../sim/prng.js';
 
 export const COMFORT = 12;      // °C felt: below this you lose warmth
-export const HEARTH_R = 4;      // cells from a house wall that count as "by the fire"
+export const HEARTH_R = 4;      // cells from a house (or mill) footprint that count as "by the fire"
+export const BARN_R = 2.5;      // cells from the centre of a farm's barn
 export const SECONDS_PER_TICK = 5;
 
 export const newPlayerState = () => ({ x: null, z: null, yaw: 0, warmth: 100, wet: 0 });
@@ -71,14 +73,27 @@ export function waterAt(world, wx, wz, groundY) {
   return { surface, depth: Math.max(0, surface - groundY) };
 }
 
-// Is there a house wall within HEARTH_R cells of this cell?
-export function nearHearth(state, cx, cy) {
-  const r = HEARTH_R;
-  for (let y = Math.max(0, cy - r); y <= Math.min(N - 1, cy + r); y++)
-    for (let x = Math.max(0, cx - r); x <= Math.min(N - 1, cx + r); x++) {
-      const id = state.occ[y * N + x];
-      if (id && state.buildings[id - 1].type === T.HOUSE) return true;
+// Where a farm's barn stands (cell coordinates of its centre). The renderer places it with the
+// first two rolls of the building's seeded random stream (see farmGrammar in render/buildings.js).
+export function barnCenter(b) {
+  const r = new Rng(b.seed ^ (b.type * 0x9e3779b9));
+  const c = r.next() / 4294967296 < 0.5 ? -1 : 1, c2 = r.next() / 4294967296 < 0.5 ? -1 : 1;
+  return [b.x + b.s / 2 + c * (b.s / 2 - 1.0), b.y + b.s / 2 + c2 * (b.s / 2 - 0.8)];
+}
+
+// Is there a fire near this spot? (px, py) in cell units, fractional (world x/z + N/2).
+// Houses and mills warm you within HEARTH_R of their footprint; farms only near their barn.
+export function nearHearth(state, px, py) {
+  for (const b of state.buildings) {
+    if (!b.alive) continue;
+    if (b.type === T.HOUSE || b.type === T.MILL) {
+      const dx = Math.max(b.x - px, 0, px - (b.x + b.s)), dy = Math.max(b.y - py, 0, py - (b.y + b.s));
+      if (dx * dx + dy * dy <= HEARTH_R * HEARTH_R) return true;
+    } else if (b.type === T.FARM) {
+      const [bx, by] = barnCenter(b);
+      if ((px - bx) ** 2 + (py - by) ** 2 <= BARN_R * BARN_R) return true;
     }
+  }
   return false;
 }
 
@@ -91,9 +106,11 @@ export function lastHouse(state, owner) {
   return null;
 }
 
-// Weather as the walker feels it at a cell (air temperature with altitude, wind, rain, sun).
-export function envAt(world, state, seed, tick, cx, cy, extra = {}) {
+// Weather as the walker feels it at a spot (air temperature with altitude, wind, rain, sun).
+// (px, py) in cell units, fractional.
+export function envAt(world, state, seed, tick, px, py, extra = {}) {
   const w = weather(seed, tick);
+  const cx = Math.floor(px), cy = Math.floor(py);
   const i = Math.min(N - 1, Math.max(0, cy)) * N + Math.min(N - 1, Math.max(0, cx));
   const airC = tempAt(w.temp, world.cellH[i]) / 10;
   const hour = tick % 24;
@@ -102,7 +119,7 @@ export function envAt(world, state, seed, tick, cx, cy, extra = {}) {
     airC, wind: w.wind / 1023, rain: w.rain / 1000, snow: w.snow,
     sun: day && w.cloud < 430 ? 1 : 0,
     depth: 0, swimming: false, running: false,
-    hearth: nearHearth(state, cx, cy),
+    hearth: nearHearth(state, px, py),
     ...extra,
   };
 }
@@ -111,11 +128,11 @@ export function envAt(world, state, seed, tick, cx, cy, extra = {}) {
 // warmth ran out at some point; the caller then moves them to their last built house.
 export function replayAway(world, state, seed, ps, from, to, owner, fallback) {
   if (ps.x === null) return null;
-  const cx = Math.floor(ps.x + N / 2), cy = Math.floor(ps.z + N / 2);
+  const px = ps.x + N / 2, py = ps.z + N / 2, cx = Math.floor(px), cy = Math.floor(py);
   const groundY = world.cellH[Math.min(N - 1, Math.max(0, cy)) * N + Math.min(N - 1, Math.max(0, cx))];
   const wa = waterAt(world, ps.x, ps.z, hY(groundY));
   for (let t = from; t < to; t++) {
-    const env = envAt(world, state, seed, t, cx, cy, { depth: wa.depth, swimming: wa.depth > 0.35 });
+    const env = envAt(world, state, seed, t, px, py, { depth: wa.depth, swimming: wa.depth > 0.35 });
     if (stepNeeds(ps, env, SECONDS_PER_TICK) === 'faint') { wakeAtHome(world, state, ps, owner, fallback); return 'faint'; }
   }
   return null;

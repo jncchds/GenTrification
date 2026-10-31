@@ -38,7 +38,7 @@ You walk the world in first person. Build where the crosshair points.
   Rotational…). Press **R** before placing to reroll.
 - **You get cold too.** Your warmth (under the clock) drops in cold air and wind, faster
   when you're wet. Rain and snow soak you slowly, wading soaks you fast, and swimming in
-  deep water soaks you at once. Standing next to any house warms and dries you by the fire,
+  deep water soaks you at once. Standing next to a house, a mill or a farm's barn warms and dries you by the fire,
   and warm sun dries you off. The cold slows you down, and if warmth runs out you wake up
   warm at your last built house. That can also happen while you're away: when you come
   back, the game replays your time away against the weather where you stood.

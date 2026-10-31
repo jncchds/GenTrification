@@ -277,8 +277,7 @@ async function start() {
   function updateWalker(dt, st) {
     const fp = view.fp;
     ps.x = fp.pos.x; ps.z = fp.pos.z; ps.yaw = fp.yaw;
-    const cx = Math.floor(ps.x + N / 2), cy = Math.floor(ps.z + N / 2);
-    const env = envAt(engine.world, st, engine.seed, st.tick, cx, cy, {
+    const env = envAt(engine.world, st, engine.seed, st.tick, ps.x + N / 2, ps.z + N / 2, {
       depth: fp.depth, swimming: fp.swimming, running: view.mode === 'fp' && !!fp.running,
     });
     ps.hearth = env.hearth; ps.swimming = fp.swimming;
@@ -291,7 +290,7 @@ async function start() {
     }
     fp.speedMul = coldSpeed(ps.warmth);
     if (fp.swimming) hint('swim', 'The water is cold! You will dry off in the sun or by a house.');
-    else if (ps.warmth < 50 && !env.hearth) hint('cold', 'You are getting cold. Stand by a house to warm up by the fire.');
+    else if (ps.warmth < 50 && !env.hearth) hint('cold', 'You are getting cold. Stand by a house, a mill or a farm barn to warm up by the fire.');
     hud.updateNeeds(ps, view.mode);
   }
 

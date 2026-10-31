@@ -191,7 +191,7 @@ export class Hud {
     const w = Math.round(ps.warmth);
     const col = w > 50 ? 'var(--good)' : w > 25 ? 'var(--warn)' : 'var(--bad)';
     const wet = ps.wet > 0.66 ? 'soaked' : ps.wet > 0.33 ? 'wet' : ps.wet > 0.05 ? 'damp' : '';
-    const state = ps.hearth ? 'by the fire' : ps.swimming ? 'swimming' : w < 25 ? 'freezing! find a house' : w < 50 ? 'cold' : ps.felt < 12 ? 'chilly' : 'comfortable';
+    const state = ps.hearth ? 'by the fire' : ps.swimming ? 'swimming' : w < 25 ? 'freezing! find a fire: house, mill or barn' : w < 50 ? 'cold' : ps.felt < 12 ? 'chilly' : 'comfortable';
     const key = `${w}|${wet}|${state}|${Math.round(ps.felt ?? 0)}`;
     if (key !== this.needsKey) {
       this.needsKey = key;

@@ -73,7 +73,7 @@ A cozy survival layer for the first-person walker, kept out of the world simulat
 |---|---|
 | Felt temperature | Air temperature at your spot (altitude lapse), minus wind chill (up to 7 °C), minus 6 °C when soaked, minus 4 °C wading / 9 °C swimming, plus 4 °C in sunshine, plus 3 °C running |
 | Warmth 0–100 | Below 12 °C felt you lose 0.03 per degree per second. Above it you warm up slowly |
-| By the fire | Within 4 cells of any house you feel at least 24 °C: warm up and dry off quickly |
+| By the fire | Within 4 cells of a house or a mill, or 2½ cells of a farm's barn, you feel at least 24 °C: warm up and dry off quickly |
 | Wetness 0–1 | Rain soaks slowly (snow slower), wading fast, swimming at once. Warm air, sun and a hearth dry you |
 | Cold | Below 40 warmth you slow down (to 70% at 0), and a frosty vignette creeps in |
 | Out of warmth | You wake at your last built house (or where you arrived, if you have none) at 70 warmth, dry |
