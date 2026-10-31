@@ -18,12 +18,17 @@ export class Hud {
     this.root = root;
     this.h = handlers;
     root.innerHTML = `
-      <div class="topbar">
+      <div class="hud-left">
         <div class="panel clock"><div class="date" id="h-date"></div><div class="wx" id="h-wx"></div></div>
         <div class="panel res" id="h-res"></div>
-        <div class="spacer"></div>
-        <div class="panel speed" id="h-speed"></div>
-        <div class="panel speed"><button id="h-menu" title="Menu (M)">☰</button></div>
+        <div class="panel mininature" id="h-mini"></div>
+      </div>
+      <div class="hud-right">
+        <div class="speedwrap">
+          <button class="panel speedcur" id="h-speedcur" title="Game speed"></button>
+          <div class="panel speedopts" id="h-speed" style="display:none"></div>
+        </div>
+        <button class="panel menubtn" id="h-menu" title="Menu (M)">☰</button>
       </div>
       <div class="panel compass" id="h-compass"><div class="ticks" id="h-cticks"></div><div class="marks" id="h-cmarks"></div><i class="center"></i></div>
       <div class="panel nature" id="h-nature"></div>
@@ -37,7 +42,6 @@ export class Hud {
         </div>
         <button class="panel buildbtn" id="h-buildbtn"></button>
       </div>
-      <div class="panel mininature" id="h-mini"></div>
       <div class="crosshair" id="h-cross"></div>
       <div class="panel clickhint" id="h-hint" style="display:none">Click to look around · Esc to release</div>
       <div class="panel help" id="h-help"></div>
@@ -45,14 +49,19 @@ export class Hud {
       <div class="panel toast" id="h-toast" style="opacity:0"></div>`;
     this.$ = (id) => root.querySelector('#' + id);
     this.$('h-menu').onclick = () => handlers.menu();
+    // Speed is collapsed into one button showing the current speed; tap to pick another.
     this.speedBtns = [];
-    for (const [label, sp] of [['❚❚', 0], ['1×', 1], ['5×', 5], ['20×', 20], ['100×', 100]]) {
+    this.speedOpen = false;
+    const setOpen = (o) => { this.speedOpen = o; this.$('h-speed').style.display = o ? 'flex' : 'none'; this.$('h-speedcur').classList.toggle('open', o); };
+    this.$('h-speedcur').onclick = () => setOpen(!this.speedOpen);
+    for (const [label, sp] of [['❚❚ Pause', 0], ['1×', 1], ['5×', 5], ['20×', 20], ['100×', 100]]) {
       const b = document.createElement('button');
-      b.textContent = label; b.onclick = () => handlers.speed(sp);
+      b.textContent = label; b.onclick = () => { handlers.speed(sp); setOpen(false); };
       b.dataset.sp = sp;
       this.$('h-speed').appendChild(b);
       this.speedBtns.push(b);
     }
+    for (const id of ['h-speedcur', 'h-speed', 'h-menu']) this.$(id).addEventListener('pointerdown', (e) => e.stopPropagation());
     this.toolBtns = [];
     for (const t of TOOLS) {
       const b = document.createElement('button');
@@ -145,7 +154,9 @@ export class Hud {
 
     this.$('h-mini').innerHTML = `Nature <b style="color:${col}">${nat.toFixed(0)}%</b> · Score <b>${(p.sustained / 1000).toFixed(1)}</b>`;
     const fp = ui.viewMode === 'fp';
-    this.$('h-cross').style.display = fp ? 'block' : 'none';
+    const pin = !fp && ui.touch && !!ui.tool;
+    this.$('h-cross').style.display = fp || pin ? 'block' : 'none';
+    this.$('h-cross').classList.toggle('pin', pin);
     this.$('h-hint').style.display = fp && !ui.locked && !ui.touch ? 'block' : 'none';
     const help = fp
       ? `<b>Walk</b> WASD · <b>Run</b> Shift · <b>Jump</b> Space · <b>Look</b> mouse<br>
@@ -156,6 +167,8 @@ export class Hud {
          <b>Walk</b> Tab · <b>Overlays</b> F T · <b>Paint</b> O · <b>Pause</b> P / Space`;
     if (this.helpHtml !== help) { this.$('h-help').innerHTML = help; this.helpHtml = help; }
     for (const b of this.speedBtns) b.classList.toggle('on', Number(b.dataset.sp) === ui.speed);
+    const cur = ui.speed === 0 ? '❚❚' : `${ui.speed}×`;
+    if (this.speedLabel !== cur) { this.speedLabel = cur; this.$('h-speedcur').innerHTML = `${cur}<small>▾</small>`; }
   }
 
   // Compass strip: cardinal points, your latest building, and every beacon (owner coloured).
@@ -182,18 +195,25 @@ export class Hud {
       else if (b.owner === owner && (!last || b.tick >= last.tick)) last = b;
     }
     if (last) targets.push({ b: last, kind: 'last' });
-    let marks = '';
-    for (const { b, kind } of targets) {
+    const items = targets.map(({ b, kind }) => {
       const dx = b.x + b.s / 2 - N / 2 - pos.x, dz = b.y + b.s / 2 - N / 2 - pos.z;
       const dist = Math.hypot(dx, dz);
       const bearing = (Math.atan2(dx, -dz) * 180) / Math.PI;
       let x = place(bearing);
       const off = x === null;
       if (off) x = ((((bearing - heading + 540) % 360) - 180) < 0 ? 8 : W - 8); // pin to the edge
+      return { b, kind, dist, x, off };
+    }).sort((a, c) => a.dist - c.dist); // nearest first gets its label when markers crowd together
+    const labelled = [];
+    let marks = '';
+    for (const { b, kind, dist, x, off } of items) {
       const color = kind === 'beacon' ? ownerCss(b.owner) : 'var(--ink)';
       const icon = kind === 'beacon' ? '◆' : '⌂';
       const m = Math.round(dist * 4);
-      marks += `<span class="mk${off ? ' off' : ''}" style="left:${x}px;color:${color}" title="${kind === 'beacon' ? 'Beacon' : 'Your latest building'}">${icon}${dist > 1.5 && !off ? `<small>${m < 1000 ? m + ' m' : (m / 1000).toFixed(1) + ' km'}</small>` : ''}</span>`;
+      const room = !labelled.some((lx) => Math.abs(lx - x) < 40);
+      const label = dist > 1.5 && !off && room;
+      if (label) labelled.push(x);
+      marks += `<span class="mk${off ? ' off' : ''}" style="left:${x}px;color:${color}" title="${kind === 'beacon' ? 'Beacon' : 'Your latest building'}">${icon}${label ? `<small>${m < 1000 ? m + ' m' : (m / 1000).toFixed(1) + ' km'}</small>` : ''}</span>`;
     }
     const key = ticks + marks;
     if (key !== this.compassKey) { this.compassKey = key; this.$('h-cticks').innerHTML = ticks; this.$('h-cmarks').innerHTML = marks; }

@@ -44,8 +44,12 @@ You walk the world in first person. Build where the crosshair points.
 |---|---|---|
 | Walk / look | WASD + mouse (click to capture), Shift to run, Space to jump | Left thumb joystick, drag to look, ⤒ to jump |
 | Build | B (or 1–5) opens the build menu, click to place, `[` `]` or wheel for size, R reroll, X demolish, Esc cancel | 🔨 opens the menu, pick a building, then ✓ places it at the crosshair (− + ↻ ✕ above it) |
-| Map view | Tab (WASD pan, middle-drag to grab the map, right-drag turn, wheel zoom) | 🗺 (drag pan, pinch zoom and turn, tap a spot then ✓) |
-| Other | P pause, F fertility overlay, T tree overlay, O paint filter, M menu | ☰ menu |
+| Map view | Tab (WASD pan, middle-drag to grab the map, right-drag turn, wheel zoom; build where the mouse points) | 🗺 (drag pans, pinch zooms, twist turns; build at the pin in the middle of the screen, tap a spot to glide there, ✓ to place) |
+| Other | P pause, F fertility overlay, T tree overlay, O paint filter, M menu | Speed button (tap to choose), ☰ menu |
+
+The top of the screen adapts to the device: clock, resources and nature stack on the left on
+narrow screens and phones, the compass sits at the top centre (across the whole top row in
+portrait), and game speed is one button that opens a small list.
 
 The menu has new worlds from a seed, save codes (copy or paste), and multiplayer.
 

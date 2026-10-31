@@ -202,7 +202,8 @@ async function start() {
   if (touch) {
     ui.touchCtl = new TouchControls(hudRoot, canvas, view, {
       toggleMap: toggleView,
-      tapAt: (x, y) => { ui.mouse = { x, y }; ui.hover = view.pickAt(x, y); },
+      // Map view on touch: building happens at the centre pin; a tap glides the map to that spot.
+      tapAt: (x, y) => { const h = view.pick(x, y); if (h) view.map.goal.target.set(h.p.x, 0, h.p.z); },
     });
   }
 
@@ -216,7 +217,8 @@ async function start() {
     ui.viewMode = view.mode;
     // First person aims with the crosshair; the map aims with the mouse (or the last tap).
     if (view.mode === 'fp') ui.hover = view.pickAt();
-    else if (ui.moved && !touch) { ui.hover = view.pick(ui.mouse.x, ui.mouse.y); }
+    else if (touch) ui.hover = view.pick(innerWidth / 2, innerHeight / 2); // pin at the screen centre
+    else if (ui.moved) { ui.hover = view.pick(ui.mouse.x, ui.mouse.y); }
     ui.moved = false;
     const entry = currentEntry();
     const reason = entry ? engine.check(entry) : null;

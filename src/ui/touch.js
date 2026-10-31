@@ -74,7 +74,7 @@ export class TouchControls {
     if (this.pointers.size >= 2 && this.pinch) {
       const now = this.twoFinger(), g = view.map.goal;
       g.dist = Math.min(260, Math.max(8, (this.pinch.dist * this.pinch.d) / Math.max(now.d, 1)));
-      g.yaw = this.pinch.yaw - (now.ang - this.pinch.ang);
+      g.yaw = this.pinch.yaw + (now.ang - this.pinch.ang); // the map turns with the fingers
     } else if (this.pointers.size === 1) {
       // Grab-the-map: the ground under the finger follows it.
       view.map.pan(-dx * view.map.dist * 0.0022, dy * view.map.dist * 0.0022);

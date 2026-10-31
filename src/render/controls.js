@@ -21,7 +21,7 @@ export class RTSControls {
       const dx = e.clientX - this.drag.x, dy = e.clientY - this.drag.y;
       this.drag.x = e.clientX; this.drag.y = e.clientY;
       if (this.drag.b === 2 && !e.shiftKey) {
-        this.goal.yaw -= dx * 0.005;
+        this.goal.yaw += dx * 0.005;
         this.goal.pitch = THREE.MathUtils.clamp(this.goal.pitch + dy * 0.004, 0.18, 1.45);
       } else this.pan(-dx * this.dist * 0.0016, dy * this.dist * 0.0016); // ground follows the cursor
     });

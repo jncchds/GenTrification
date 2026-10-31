@@ -18,11 +18,22 @@ canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }
 /* Full-screen or decorative layers must let touches and clicks reach the canvas. */
-#hud > .touch, #hud > .topbar, #hud > .crosshair, #hud > .clickhint, #hud > .tip, #hud > .toast, #hud > .loading, #hud > .compass, #hud > .buildarea { pointer-events: none; }
+#hud > .touch, #hud > .hud-left, #hud > .hud-right, #hud > .crosshair, #hud > .clickhint, #hud > .tip, #hud > .toast, #hud > .loading, #hud > .compass, #hud > .buildarea { pointer-events: none; }
 .panel { background: var(--paper); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 
-.topbar { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: stretch; pointer-events: none; }
-.topbar > * { pointer-events: auto; }
+/* Top layout: info on the left (clock, resources), compass top centre, speed + menu on the right.
+   Wide screens: clock and resources side by side. Narrow or touch: stacked in a column.
+   Portrait phones: the compass takes the whole top row and the rest sits below it. */
+:root { --top: calc(12px + env(safe-area-inset-top)); --side: 12px; --below: var(--top); }
+.hud-left { position: absolute; top: var(--below); left: calc(var(--side) + env(safe-area-inset-left)); display: flex; gap: 8px; align-items: flex-start; }
+.hud-right { position: absolute; top: var(--below); right: calc(var(--side) + env(safe-area-inset-right)); display: flex; gap: 8px; align-items: flex-start; }
+.hud-left > *, .hud-right > * { pointer-events: auto; }
+.speedwrap { position: relative; }
+.speedcur, .menubtn { height: 44px; min-width: 52px; padding: 0 12px; font-size: 17px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.speedcur small { font-size: 11px; color: var(--ink-soft); }
+.speedcur.open { background: var(--paper-solid); }
+.speedopts { position: absolute; top: 50px; right: 0; flex-direction: column; gap: 2px; padding: 4px; min-width: 110px; }
+.speedopts button { text-align: left; padding: 8px 12px; }
 .clock { padding: 8px 14px; min-width: 210px; }
 .clock .date { font-size: 15px; font-weight: 600; }
 .clock .wx { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
@@ -33,8 +44,6 @@ canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
 .res .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .res .d { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 .res .d .plus { color: var(--good); } .res .d .minus { color: var(--bad); }
-.spacer { flex: 1; }
-.speed { display: flex; gap: 4px; padding: 6px; align-items: center; }
 button { font: inherit; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 9px; padding: 5px 10px; cursor: pointer; }
 button:hover { background: rgba(80, 64, 40, 0.08); }
 button.on { background: var(--ink); color: var(--paper-solid); }
@@ -67,23 +76,23 @@ button.primary { background: var(--accent); color: white; }
 .placing .sz { display: flex; align-items: center; gap: 2px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0 4px; }
 
 /* Compass: cardinal points, your latest building and beacons. */
-.compass { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 380px; height: 44px; overflow: hidden; pointer-events: none; border-radius: 12px; }
+.compass { position: absolute; top: var(--top); left: 50%; transform: translateX(-50%); width: min(380px, 34vw); height: 44px; overflow: hidden; pointer-events: none; border-radius: 12px; }
 .compass .ticks span, .compass .ticks b, .compass .mk { position: absolute; transform: translateX(-50%); }
 .compass .ticks span { top: 4px; font-size: 13px; color: var(--ink-soft); }
 .compass .ticks span.card { font-weight: 700; color: var(--ink); font-size: 15px; top: 3px; }
 .compass .ticks b { top: 7px; width: 1px; height: 8px; background: var(--ink-soft); opacity: 0.6; }
-.compass .mk { top: 18px; font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; text-shadow: 0 0 3px var(--paper-solid); }
+.compass .mk { top: 17px; font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; text-shadow: 0 0 3px var(--paper-solid); }
 .compass .mk small { font-size: 10px; color: var(--ink-soft); margin-top: 1px; }
 .compass .mk.off { opacity: 0.55; top: 14px; }
 .compass .center { position: absolute; left: 50%; top: 0; width: 2px; height: 6px; margin-left: -1px; background: var(--accent); }
-@media (max-width: 1250px) { .compass { top: 84px; width: 320px; } .nature { top: 136px; } }
+.nature { top: calc(var(--below) + 56px); }
 
 .tip { position: absolute; padding: 8px 12px; font-size: 13px; max-width: 300px; pointer-events: none; transform: translate(16px, 16px); }
 .tip .t { font-weight: 600; }
 .tip .bad { color: var(--bad); }
 .tip .q { color: var(--accent); }
 
-.toast { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); padding: 8px 16px; font-size: 14px; transition: opacity 0.4s; }
+.toast { position: absolute; left: 50%; top: calc(var(--below) + 70px); transform: translateX(-50%); padding: 8px 16px; font-size: 14px; transition: opacity 0.4s; }
 .help { position: absolute; left: 12px; bottom: 12px; font-size: 12px; padding: 8px 12px; color: var(--ink-soft); max-width: 260px; }
 .help b { color: var(--ink); }
 
@@ -102,6 +111,10 @@ button.primary { background: var(--accent); color: white; }
 .crosshair::before, .crosshair::after { content: ''; position: absolute; background: rgba(255, 252, 240, 0.85); box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); }
 .crosshair::before { left: 8px; top: 2px; width: 2px; height: 14px; }
 .crosshair::after { top: 8px; left: 2px; height: 2px; width: 14px; }
+/* Map view on touch: a pin at the screen centre marks where the building goes. */
+.crosshair.pin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255, 252, 240, 0.95); box-shadow: 0 0 0 2px rgba(47, 111, 122, 0.8), 0 2px 8px rgba(0, 0, 0, 0.35); }
+.crosshair.pin::before { left: 11px; top: 11px; width: 4px; height: 4px; border-radius: 50%; }
+.crosshair.pin::after { display: none; }
 .clickhint { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; pointer-events: none; }
 
 /* touch controls */
@@ -125,20 +138,40 @@ body.touchmode .placing button { min-width: 40px; min-height: 40px; font-size: 1
 body.touchmode .touch .tbtns { right: 100px; }
 body.touchmode .tip { left: 50% !important; top: auto !important; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); }
 
-@media (max-width: 900px) {
-  .topbar { top: calc(8px + env(safe-area-inset-top)); left: 8px; right: 8px; gap: 6px; flex-wrap: wrap; }
+.mininature { display: none; padding: 5px 10px; font-size: 13px; }
+
+/* Narrower screens and all touch devices: clock, resources and nature stack down the left. */
+@media (max-width: 1250px) {
+  .hud-left { flex-direction: column; }
+}
+body.touchmode .hud-left { flex-direction: column; gap: 6px; }
+body.touchmode .nature { display: none; }
+body.touchmode .mininature { display: block; }
+
+/* Compact panels on small screens (phones in either orientation). */
+@media (max-width: 900px), (max-height: 520px) {
+  :root { --top: calc(8px + env(safe-area-inset-top)); --side: 8px; }
   .clock { min-width: 0; padding: 6px 10px; }
   .clock .date { font-size: 13px; }
   .clock .wx { font-size: 12px; }
   .res { padding: 4px; }
-  .res .r { min-width: 0; padding: 0 6px; }
+  .res .r { min-width: 0; padding: 0 8px; }
   .res .v { font-size: 15px; }
   .res .d { display: none; }
-  .speed { padding: 3px; }
-  .speed button { padding: 4px 7px; }
+  .speedcur, .menubtn { height: 40px; min-width: 46px; }
   .nature { display: none; }
   .help { display: none; }
-  .mininature { display: block !important; }
-  .compass { top: calc(104px + env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: 420px; height: 40px; }
+  .mininature { display: block; }
 }
-.mininature { display: none; position: absolute; left: 8px; top: calc(150px + env(safe-area-inset-top)); padding: 5px 10px; font-size: 13px; }
+
+/* Short landscape phones: keep the build menu clear of the top-right buttons. */
+@media (max-height: 520px) {
+  body.touchmode .buildmenu button { padding: 6px 12px; font-size: 14px; }
+  body.touchmode .buildbtn { width: 64px; height: 64px; }
+}
+
+/* Portrait phones: the compass gets the whole top row; everything else sits below it. */
+@media (orientation: portrait) and (max-width: 700px) {
+  :root { --below: calc(var(--top) + 48px); }
+  .compass { left: calc(var(--side) + env(safe-area-inset-left)); right: calc(var(--side) + env(safe-area-inset-right)); width: auto; transform: none; }
+}
