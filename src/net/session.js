@@ -18,7 +18,10 @@ export class LocalSession {
       } catch { /* no usable save */ }
     }
     if (seed === undefined) seed = (Math.random() * 2 ** 32) >>> 0;
+    // A brand-new world opens on a spring morning (day 3, 08:00) rather than before dawn.
+    if (!code && !savedAt && !log.length && tick === 0) tick = 2 * HOURS + 8;
     this.engine = new Engine(seed, log);
+    this.engine.advanceTo(tick);
     this.owner = 1;
     this.mode = 'local';
     this.speed = 1;
