@@ -21,7 +21,11 @@ You walk the world in first person. Build where the crosshair points.
   around your village stays above 60%. The score is *sustained population*: the recent
   average population, counting only days when nature is healthy.
 - **People** need food every day and firewood, more of it in the cold. Growth is fastest
-  when there is room, food and warmth, and nature nearby is healthy.
+  when there is room, food and warmth, and nature nearby is healthy. Newcomers only settle
+  while you have at least 5 days of food and firewood stored. When stores run short, some
+  households move away, more the bigger the shortfall.
+- **Firewood** is a real winter cost: about 0.17 wood per person per day in deep winter.
+  One small mill heats roughly 15–20 people through a winter, so cut and stockpile in autumn.
 - **Farms** only grow in warm weather. Stock up food before winter. Farming wears the soil;
   land left fallow recovers slowly.
 - **Mills** cut the forest around them. Light cutting thins the forest and it regrows.
@@ -32,6 +36,12 @@ You walk the world in first person. Build where the crosshair points.
   compass at the top shows every beacon (in its owner's colour) and your latest building.
 - Every building rolls ±20% efficiency and sometimes a quirk (Cozy, Greedy saws,
   Rotational…). Press **R** before placing to reroll.
+- **You get cold too.** Your warmth (under the clock) drops in cold air and wind, faster
+  when you're wet. Rain and snow soak you slowly, wading soaks you fast, and swimming in
+  deep water soaks you at once. Standing next to any house warms and dries you by the fire,
+  and warm sun dries you off. The cold slows you down, and if warmth runs out you wake up
+  warm at your last built house. That can also happen while you're away: when you come
+  back, the game replays your time away against the weather where you stood.
 - Walking follows the land: climbs are slower, slopes steeper than about 45° can't be
   climbed (jump onto ledges), and very steep ground makes you slide.
 - Each season has its own weather. Spring: mild, with showers. Summer: warm and mostly
@@ -44,7 +54,7 @@ You walk the world in first person. Build where the crosshair points.
 |---|---|---|
 | Walk / look | WASD + mouse (click to capture), Shift to run, Space to jump | Left thumb joystick, drag to look, ⤒ to jump |
 | Build | B (or 1–5) opens the build menu, click to place, `[` `]` or wheel for size, R reroll, X demolish, Esc cancel | 🔨 opens the menu, pick a building, then ✓ places it at the crosshair (− + ↻ ✕ above it) |
-| Map view | Tab (WASD pan, middle-drag to grab the map, right-drag turn, wheel zoom; build where the mouse points) | 🗺 (drag pans, pinch zooms, twist turns; build at the pin in the middle of the screen, tap a spot to glide there, ✓ to place) |
+| Map view | Tab (WASD pan, middle-drag to grab the map, right-drag turn, wheel zoom; build where the mouse points). The glowing pin is where you stand; **G** or 🚶 **Go here** walks from the centre pin. Going back with Tab leaves you where you were | 🗺 (drag pans, pinch zooms, twist turns; build at the pin in the middle of the screen, tap a spot to glide there, ✓ to place; 🚶 **Go here** walks from the pin) |
 | Other | P pause, F fertility overlay, T tree overlay, O paint filter, M menu | Speed button (tap to choose), ☰ menu |
 
 The top of the screen adapts to the device: clock, resources and nature stack on the left on
@@ -58,12 +68,13 @@ The menu has new worlds from a seed, save codes (copy or paste), and multiplayer
 ```bash
 npm install
 npm run dev           # http://localhost:5173
-npm test              # determinism + multiplayer tests
+npm test              # determinism, multiplayer, movement and player-needs tests
+node tools/balance.mjs [years] [seeds] [strategies] [--brief] [--set=k=v,...]   # balance runs
 npm run build         # static build in dist/
 ```
 
 URL options for testing: `?seed=123`, `?demo=18` (a bot builds a village for 18 days),
-`?hour=17`, `?view=map`, `?mobile=1`, `?hud=0`. Screenshots:
+`?hour=17`, `?view=map`, `?mobile=1`, `?hud=0`, `?warmth=20` (start cold). Screenshots:
 `node tools/shot.mjs out.png "demo=18&hour=10"`. Touch controls on an emulated phone:
 `node tools/touchtest.mjs`. Both need the dev server and Chrome.
 

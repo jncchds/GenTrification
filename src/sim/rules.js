@@ -64,11 +64,12 @@ export const houseCap = (b) => Math.floor((b.s * b.s * 3 * b.eff * (quirkOf(b).c
 export const START = { wood: 120000, food: 45000, people: 8, baseCap: 8 };
 export const ECON = {
   foodPerPerson: 100,    // milli-food / person / day
-  heatPerDegree: 5,      // milli-wood / person / day for each degree C below 16 C
+  heatPerDegree: 8,      // milli-wood / person / day for each degree C below 16 C
   heatBase: 4,           // milli-wood / person / day for cooking, all year
   farmYield: 22,         // milli-food / cell / daylight hour at fertility 1000
-  millCut: 14,           // tree units / daylight hour per size step (1 tree unit = 10 milli-wood)
-  woodPerTreeUnit: 10,
-  clearShare: 2,         // clearing a cell for a building returns half its wood
+  millCut: 20,           // tree units / daylight hour per size step (1 tree unit = 8 milli-wood)
+  woodPerTreeUnit: 8,
+  clearShare: 4,         // clearing a cell for a building returns a quarter of its wood
   natureThreshold: 600,  // per-mille; score only accrues above this
+  pantryDays: 5,         // newcomers settle only with this many days of food and firewood stored
 };

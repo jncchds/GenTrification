@@ -58,6 +58,17 @@ export class GameView {
     this.buildings = new Buildings(world, env);
     this.fx = new WeatherFX(env);
     scene.add(this.terrain.mesh, this.water.group, this.sky.mesh, this.trees.group, this.grass.mesh, this.buildings.group, this.fx.group);
+    // Where the walker stands, shown in map view: a small glowing pin.
+    const pin = (this.walkerPin = new THREE.Group());
+    const pinMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, fog: false, depthTest: false, transparent: true });
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 12), pinMat);
+    cone.rotation.x = Math.PI; cone.position.y = 1.0;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 10), pinMat);
+    ball.position.y = 1.9;
+    pin.add(cone, ball);
+    pin.renderOrder = 10; cone.renderOrder = 10; ball.renderOrder = 10;
+    pin.visible = false;
+    scene.add(pin);
 
     const sun = (this.sun = new THREE.DirectionalLight(0xffffff, 2.5));
     sun.castShadow = true;
@@ -104,11 +115,8 @@ export class GameView {
       this.map.target.copy(this.fp.pos);
       this.map.goal.yaw = this.map.yaw = this.fp.yaw;
       if (document.pointerLockElement) document.exitPointerLock();
-    } else {
-      const t = this.map.goal.target;
-      this.fp.focus(t.x, t.z);
-      this.fp.yaw = this.map.yaw;
     }
+    // Back to walking: the walker stays where they were (use teleport() to move them).
     this.mode = mode;
     this.fp.enabled = mode === 'fp';
     this.map.enabled = mode === 'map';
@@ -119,6 +127,12 @@ export class GameView {
     const sc = this.sun.shadow.camera, ext = mode === 'fp' ? 45 : 70;
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix();
     this.shadowExt = ext;
+  }
+
+  // Move the walker to a world position (map view's "Go here").
+  teleport(x, z) {
+    this.fp.focus(x, z);
+    this.fp.yaw = this.map.yaw;
   }
 
   // Compass heading in degrees, clockwise from north (-z). Both camera modes look along (-sin yaw, -cos yaw).
@@ -285,6 +299,12 @@ export class GameView {
     this.post.grade.uniforms.uTime.value = now;
     this.state = state;
     this.controls.update(dt);
+    this.walkerPin.visible = this.mode === 'map';
+    if (this.walkerPin.visible) {
+      const k = Math.max(1, this.map.dist / 40);  // stay readable when zoomed out
+      this.walkerPin.scale.setScalar(k);
+      this.walkerPin.position.set(this.fp.pos.x, this.fp.pos.y, this.fp.pos.z);
+    }
     const info = this.updateEnvironment(tickF, dt);
     const c2 = new THREE.Vector2(this.controls.target.x, this.controls.target.z);
     if (now - this.lastTerrainUpdate > 0.25) { this.terrain.update(state, epoch); this.lastTerrainUpdate = now; }

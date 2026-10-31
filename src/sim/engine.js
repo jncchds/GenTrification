@@ -71,12 +71,14 @@ export class Engine {
   hash() { return hashState(this.state); }
 }
 
-// ---- Save codes: a save is just numbers. "GT1.<seed>.<tick>.<base64url varints>"
+// ---- Save codes: a save is just numbers. "GT1.<seed>.<tick>.<base64url varints>[.<player>]"
+// The optional player part is the walker's own state (never read by the world simulation):
+// x and z in tenths of a cell, yaw in milliradians, warmth 0..100, wetness 0..100, joined by "_".
 
 function pushVarint(out, v) { v >>>= 0; while (v >= 0x80) { out.push((v & 0x7f) | 0x80); v >>>= 7; } out.push(v); }
 function readVarint(bytes, pos) { let v = 0, shift = 0, b; do { b = bytes[pos.i++]; v += (b & 0x7f) * 2 ** shift; shift += 7; } while (b & 0x80); return v; }
 
-export function encodeSave(seed, tick, log) {
+export function encodeSave(seed, tick, log, player = null) {
   const bytes = [];
   let last = 0;
   for (const e of log) {
@@ -87,11 +89,15 @@ export function encodeSave(seed, tick, log) {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   const b64 = typeof btoa === 'function' ? btoa(bin) : Buffer.from(bin, 'binary').toString('base64');
-  return `GT1.${seed >>> 0}.${tick}.${b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+  let code = `GT1.${seed >>> 0}.${tick}.${b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+  if (player && player.x !== null && Number.isFinite(player.x)) {
+    code += '.' + [player.x * 10, player.z * 10, player.yaw * 1000, player.warmth, player.wet * 100].map((v) => Math.round(v)).join('_');
+  }
+  return code;
 }
 
 export function decodeSave(code) {
-  const m = /^GT1\.(\d+)\.(\d+)\.([A-Za-z0-9_-]*)$/.exec(code.trim());
+  const m = /^GT1\.(\d+)\.(\d+)\.([A-Za-z0-9_-]*)(?:\.(-?\d+(?:_-?\d+){4}))?$/.exec(code.trim());
   if (!m) throw new Error('Not a save code');
   const b64 = m[3].replace(/-/g, '+').replace(/_/g, '/');
   const bin = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
@@ -102,7 +108,12 @@ export function decodeSave(code) {
     tick += readVarint(bytes, pos);
     log.push({ tick, owner: readVarint(bytes, pos), type: readVarint(bytes, pos), x: readVarint(bytes, pos), y: readVarint(bytes, pos), s: readVarint(bytes, pos), seed: readVarint(bytes, pos) });
   }
-  return { seed: Number(m[1]) >>> 0, tick: Number(m[2]), log };
+  let player = null;
+  if (m[4]) {
+    const [x, z, yaw, warmth, wet] = m[4].split('_').map(Number);
+    player = { x: x / 10, z: z / 10, yaw: yaw / 1000, warmth: Math.min(100, Math.max(0, warmth)), wet: Math.min(1, Math.max(0, wet / 100)) };
+  }
+  return { seed: Number(m[1]) >>> 0, tick: Number(m[2]), log, player };
 }
 
 export { hashState };

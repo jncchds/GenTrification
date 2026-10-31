@@ -10,12 +10,13 @@ src/sim/      deterministic simulation (integer math only, runs in browser and N
   sim.js        state, placement validation, the hourly step, nature health, state hash
   engine.js     timeline: log, snapshots, rollback/replay, save codes
   bot.js        settler bot (demo village and balance testing)
+src/player/   the walker's needs (warmth, wetness), away replay, wake-at-home. Player state, not world state
 src/render/   Three.js renderer (floats allowed; only reads sim state)
 src/ui/       HUD and touch controls
 src/net/      local session (clock, localStorage, offline catch-up) and remote session (WebSocket)
 server/       multiplayer log server (orders and stores the log; never simulates)
 test/         determinism and multiplayer tests
-tools/        map preview, demo layout, screenshots
+tools/        map preview, demo layout, screenshots, balance runs (balance.mjs), HUD probe
 ```
 
 ## Determinism rules
@@ -49,8 +50,10 @@ two in-game years simulate in about 150 ms.
 
 `{ tick, owner, type, x, y, s, seed[, seq] }`, with type 1 house, 2 farm, 3 mill, 4 reserve, 9 demolish.
 
-A save code is `GT1.<seed>.<tick>.<base64url varints>`: each entry stored as
-delta-tick, owner, type, x, y, size, seed.
+A save code is `GT1.<seed>.<tick>.<base64url varints>[.<player>]`: each entry stored as
+delta-tick, owner, type, x, y, size, seed. The optional player part is the walker's state,
+`x_z_yaw_warmth_wet` as integers (tenths of a cell, milliradians, 0–100, 0–100). Older codes
+without it still load. In multiplayer the walker's state is kept in local storage per room.
 
 ## Multiplayer protocol (JSON over WebSocket)
 

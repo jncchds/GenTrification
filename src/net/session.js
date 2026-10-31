@@ -2,6 +2,7 @@
 // multiplayer gets the ordered log from the server (see server/server.js).
 import { Engine, encodeSave, decodeSave } from '../sim/engine.js';
 import { HOURS } from '../sim/climate.js';
+import { newPlayerState } from '../player/needs.js';
 
 export const TICKS_PER_SEC = 0.2; // 1x speed: one in-game hour every 5 s (a day in 2 minutes)
 const SAVE_KEY = 'gentrification.save.v1';
@@ -9,14 +10,16 @@ const MAX_OFFLINE_DAYS = 30;
 
 export class LocalSession {
   constructor({ seed, code, startTick = 0 }) {
-    let log = [], tick = startTick, savedAt = null;
-    if (code) ({ seed, log, tick } = decodeSave(code));
+    let log = [], tick = startTick, savedAt = null, player = null;
+    if (code) ({ seed, log, tick, player } = decodeSave(code));
     else if (seed === undefined) {
       try {
         const raw = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
-        if (raw) { ({ seed, log, tick } = decodeSave(raw.code)); savedAt = raw.savedAt; }
+        if (raw) { ({ seed, log, tick, player } = decodeSave(raw.code)); savedAt = raw.savedAt; }
       } catch { /* no usable save */ }
     }
+    // The walker's own state (position, warmth, wetness). The world sim never reads it.
+    this.player = { ...newPlayerState(), ...(player || {}) };
     if (seed === undefined) seed = (Math.random() * 2 ** 32) >>> 0;
     // A brand-new world opens on a spring morning (day 3, 08:00) rather than before dawn.
     if (!code && !savedAt && !log.length && tick === 0) tick = 2 * HOURS + 8;
@@ -33,6 +36,7 @@ export class LocalSession {
       this.offlineTicks = Math.min(away, MAX_OFFLINE_DAYS * HOURS);
     }
     this.target = tick + this.offlineTicks;
+    this.awayFrom = tick; this.awayTicks = this.offlineTicks; // the walker's needs replay this span
     this.lastSave = 0;
   }
   get seed() { return this.engine.seed; }
@@ -55,7 +59,7 @@ export class LocalSession {
     this.engine.add(entry);
     return entry;
   }
-  saveCode() { return encodeSave(this.engine.seed, this.engine.state.tick, this.engine.log); }
+  saveCode() { return encodeSave(this.engine.seed, this.engine.state.tick, this.engine.log, this.player); }
   save() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify({ code: this.saveCode(), savedAt: Date.now() })); } catch { /* storage full or blocked */ }
   }
@@ -70,6 +74,10 @@ export class RemoteSession {
     this.frac = 0;
     this.onStatus = onStatus || (() => {});
     this.roster = {};
+    this.playerKey = `gentrification.player.${url}|${room}`;
+    this.player = newPlayerState();
+    this.awayTicks = 0;
+    this.lastSave = 0;
     this.ready = new Promise((resolve, reject) => {
       let token;
       try { token = localStorage.getItem('gentrification.token'); } catch { /* ignore */ }
@@ -86,6 +94,15 @@ export class RemoteSession {
           this.start = msg.start; this.msPerTick = msg.msPerTick;
           this.offset = msg.now - Date.now();
           this.roster = msg.roster;
+          // Our walker in this room, saved locally; replay its needs over the time we were away.
+          try {
+            const saved = JSON.parse(localStorage.getItem(this.playerKey) || 'null');
+            if (saved?.player) {
+              this.player = { ...this.player, ...saved.player };
+              this.awayFrom = saved.tick;
+              this.awayTicks = Math.max(0, Math.min(this.serverTick() - saved.tick, MAX_OFFLINE_DAYS * HOURS));
+            }
+          } catch { /* ignore */ }
           resolve(this);
         } else if (msg.t === 'entry') {
           this.engine.add(msg.entry);
@@ -103,6 +120,8 @@ export class RemoteSession {
     const t = this.serverTick();
     const done = this.engine.advanceTo(t, 12);
     this.frac = done ? ((Date.now() + this.offset - this.start) % this.msPerTick) / this.msPerTick : 0;
+    const now = performance.now();
+    if (now - this.lastSave > 5000) { this.save(); this.lastSave = now; }
     return done;
   }
   place(e) {
@@ -111,6 +130,8 @@ export class RemoteSession {
     this.ws.send(JSON.stringify({ t: 'place', entry }));
     return entry;
   }
-  saveCode() { return encodeSave(this.engine.seed, this.engine.state.tick, this.engine.log); }
-  save() {}
+  saveCode() { return encodeSave(this.engine.seed, this.engine.state.tick, this.engine.log, this.player); }
+  save() {
+    try { localStorage.setItem(this.playerKey, JSON.stringify({ tick: this.engine.state.tick, player: this.player })); } catch { /* ignore */ }
+  }
 }

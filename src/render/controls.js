@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { HALF, heightAt } from './common.js';
+import { waterAt } from '../player/needs.js';
 
 // RTS camera: WASD / arrows / edge-free drag to pan, right-drag (or Q/E) to rotate, wheel to zoom.
 export class RTSControls {
@@ -73,7 +74,9 @@ export class RTSControls {
 }
 
 // First person: walk the world. WASD + mouse look (pointer lock), Shift runs, Space jumps.
-// Houses and mills block movement; deep water does too.
+// Houses and mills block movement. Shallow water is waded, deep water is swum (slowly, head above water).
+const SWIM_DEPTH = 0.35;                  // deeper than this (≈1.4 m) you swim
+
 export class FirstPersonControls {
   constructor(camera, dom, world, blocked) {
     this.camera = camera; this.dom = dom; this.world = world;
@@ -83,6 +86,8 @@ export class FirstPersonControls {
     this.yaw = 0; this.pitch = -0.1;
     this.vy = 0; this.onGround = true;
     this.eye = 0.45;                      // 1 cell ~ 4 m, so eyes at ~1.8 m
+    this.speedMul = 1;                    // set from outside (the cold slows you down)
+    this.depth = 0; this.swimming = false;
     this.keys = new Set();
     this.enabled = true;
     this.goal = { target: this.pos };
@@ -101,8 +106,13 @@ export class FirstPersonControls {
     this.pitch = THREE.MathUtils.clamp(this.pitch - dy, -1.45, 1.45);
   }
   get locked() { return document.pointerLockElement === this.dom; }
-  focus(x, z) { this.pos.set(x, Math.max(0, heightAt(this.world, x, z)), z); }
-  ground(x, z) { return heightAt(this.world, x, z); }
+  focus(x, z) { this.pos.set(x, this.ground(x, z), z); this.vy = 0; this.onGround = true; }
+  // What you stand on: the terrain, or in deep water the level where you float with your head out.
+  ground(x, z) {
+    const g = heightAt(this.world, x, z);
+    const w = waterAt(this.world, x, z, g);
+    return w.depth > SWIM_DEPTH ? w.surface - SWIM_DEPTH : g;
+  }
   update(dt) {
     if (!this.enabled) return;
     const k = this.keys;
@@ -115,6 +125,13 @@ export class FirstPersonControls {
     const tm = this.touchMove;
     let run = k.has('ShiftLeft') || k.has('ShiftRight');
     if (tm && (tm.f || tm.r)) { f += tm.f; r += tm.r; run = run || Math.hypot(tm.f, tm.r) > 0.92; }
+    {
+      const g0 = heightAt(this.world, this.pos.x, this.pos.z);
+      this.depth = waterAt(this.world, this.pos.x, this.pos.z, g0).depth;
+      this.swimming = this.depth > SWIM_DEPTH;
+    }
+    if (this.swimming) run = false;
+    this.running = run && (f || r);
     const want = Math.min(1, Math.hypot(f, r));
     const len = Math.hypot(f, r) || 1;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
@@ -126,7 +143,8 @@ export class FirstPersonControls {
     const grade = want > 0 ? gradeTo(mx, mz) : 0;
     this.grade = grade;
     const slopeK = grade > 0 ? Math.max(0.3, 1 - grade * 0.75) : Math.min(1.2, 1 - grade * 0.2);
-    const speed = (run ? 7.5 : 2.6) * dt * want * (this.onGround ? slopeK : 0.8);
+    const waterK = this.swimming ? 0.45 : this.depth > 0.05 ? 0.7 : 1;
+    const speed = (run ? 7.5 : 2.6) * dt * want * (this.onGround ? slopeK : 0.8) * waterK * this.speedMul;
     const dx = mx * speed, dz = mz * speed;
     const MAX_GRADE = 1.0;                  // ~45 degrees: steeper than this cannot be walked up
     this.tooSteep = false;
@@ -135,8 +153,8 @@ export class FirstPersonControls {
       if (Math.abs(nx) > HALF - 0.5 || Math.abs(nz) > HALF - 0.5) return false;
       if (this.blocked(nx, nz)) return false;
       const g = this.ground(nx, nz);
-      if (g < -0.35) return false;          // too deep to wade
       if (!this.onGround) return g <= this.pos.y + 0.02; // in the air: only over ground below our feet (jump onto ledges)
+      if (this.swimming) return g < cur + 0.6;  // you can pull yourself out onto a bank
       if (gradeTo(dirx, dirz) > MAX_GRADE && g > cur) { this.tooSteep = true; return false; } // cliff or steep climb
       return true;
     };
@@ -151,11 +169,11 @@ export class FirstPersonControls {
       if (steep > 1.2) {
         const s = Math.min(4, (steep - 1.2) * 5) * dt / steep;
         const nx = this.pos.x - gx * s, nz = this.pos.z - gz * s;
-        if (Math.abs(nx) < HALF - 0.5 && Math.abs(nz) < HALF - 0.5 && !this.blocked(nx, nz) && this.ground(nx, nz) > -0.35) { this.pos.x = nx; this.pos.z = nz; }
+        if (Math.abs(nx) < HALF - 0.5 && Math.abs(nz) < HALF - 0.5 && !this.blocked(nx, nz)) { this.pos.x = nx; this.pos.z = nz; }
       }
     }
-    const g = Math.max(this.ground(this.pos.x, this.pos.z), -0.3);
-    if ((k.has('Space') || this.wantJump) && this.onGround) { this.vy = 3.2; this.onGround = false; }
+    const g = this.ground(this.pos.x, this.pos.z);
+    if ((k.has('Space') || this.wantJump) && this.onGround && !this.swimming) { this.vy = 3.2; this.onGround = false; }
     this.wantJump = false;
     this.vy -= 9.0 * dt;
     this.pos.y += this.vy * dt;
@@ -169,7 +187,8 @@ export class FirstPersonControls {
     // Head bob while walking.
     const moving = (f || r) && this.onGround;
     this.bob = (this.bob || 0) + (moving ? dt * (speed / dt) * 2.2 : 0);
-    const bob = moving ? Math.sin(this.bob) * 0.012 : 0;
+    // Swimming: a slow bob on the water instead of steps.
+    const bob = this.swimming ? Math.sin(performance.now() / 600) * 0.015 : moving ? Math.sin(this.bob) * 0.012 : 0;
     this.camera.position.set(this.pos.x, this.pos.y + this.eye + bob, this.pos.z);
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }

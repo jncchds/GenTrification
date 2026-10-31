@@ -18,8 +18,12 @@ export class Hud {
     this.root = root;
     this.h = handlers;
     root.innerHTML = `
+      <div class="frost" id="h-frost"></div>
       <div class="hud-left">
-        <div class="panel clock"><div class="date" id="h-date"></div><div class="wx" id="h-wx"></div></div>
+        <div class="hcol">
+          <div class="panel clock"><div class="date" id="h-date"></div><div class="wx" id="h-wx"></div></div>
+          <div class="panel needs" id="h-needs"></div>
+        </div>
         <div class="panel res" id="h-res"></div>
         <div class="panel mininature" id="h-mini"></div>
       </div>
@@ -40,7 +44,10 @@ export class Hud {
           <button id="h-reroll" title="Reroll the building (R)">↻</button>
           <button id="h-cancel" title="Cancel (Esc)">✕</button>
         </div>
-        <button class="panel buildbtn" id="h-buildbtn"></button>
+        <div class="btnrow">
+          <button class="panel buildbtn gobtn" id="h-go" style="display:none" title="Go to the pin and walk (G)">🚶<small>Go here</small></button>
+          <button class="panel buildbtn" id="h-buildbtn"></button>
+        </div>
       </div>
       <div class="crosshair" id="h-cross"></div>
       <div class="panel clickhint" id="h-hint" style="display:none">Click to look around · Esc to release</div>
@@ -78,6 +85,7 @@ export class Hud {
     this.$('h-cancel').onclick = () => handlers.cancel();
     // One button: opens the menu; while placing on touch it becomes the confirm button.
     this.$('h-buildbtn').onclick = () => handlers.buildButton();
+    this.$('h-go').onclick = () => handlers.goHere();
     for (const id of ['h-buildarea']) this.$(id).addEventListener('pointerdown', (e) => e.stopPropagation());
     this.last = 0;
     this.lastBuildKey = '';
@@ -131,10 +139,16 @@ export class Hud {
     this.$('h-wx').textContent = `${sky} · ${info.tempC.toFixed(0)}°C · wind ${Math.round(w.wind / 10.23)}%`;
 
     const foodDays = p.foodUse ? (p.food / p.foodUse) : Infinity;
+    const woodDays = p.woodUse ? (p.wood / p.woodUse) : Infinity;
+    const peopleNote = p.people > p.cap ? '<span class="minus">overcrowded</span>'
+      : p.leftToday ? `<span class="minus">${p.leftToday} moved away</span>`
+      : p.staffing < 1000 ? `<span class="minus">${Math.round(p.staffing / 10)}% staffed</span>`
+      : p.stocked === false && p.people < p.cap ? '<span class="minus">stores low: no newcomers</span>'
+      : `${p.workers} jobs`;
     const res = [
-      ['People', `${p.people}<span class="muted" style="font-size:13px"> / ${p.cap}</span>`, p.people > p.cap ? '<span class="minus">overcrowded</span>' : p.staffing < 1000 ? `<span class="minus">${Math.round(p.staffing / 10)}% staffed</span>` : `${p.workers} jobs`],
+      ['People', `${p.people}<span class="muted" style="font-size:13px"> / ${p.cap}</span>`, peopleNote],
       ['Food', fmt(p.food), `<span class="plus">+${fmt(p.foodDay, 1)}</span> <span class="minus">−${fmt(p.foodUse, 1)}</span>/day${foodDays < 6 ? ' ⚠' : ''}`],
-      ['Wood', fmt(p.wood), `<span class="plus">+${fmt(p.woodDay, 1)}</span> <span class="minus">−${fmt(p.woodUse, 1)}</span>/day`],
+      ['Wood', fmt(p.wood), `<span class="plus">+${fmt(p.woodDay, 1)}</span> <span class="minus">−${fmt(p.woodUse, 1)}</span>/day${woodDays < 6 ? ' ⚠' : ''}`],
     ];
     this.$('h-res').innerHTML = res.map(([k, v, d]) => `<div class="r"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
 
@@ -154,9 +168,10 @@ export class Hud {
 
     this.$('h-mini').innerHTML = `Nature <b style="color:${col}">${nat.toFixed(0)}%</b> · Score <b>${(p.sustained / 1000).toFixed(1)}</b>`;
     const fp = ui.viewMode === 'fp';
-    const pin = !fp && ui.touch && !!ui.tool;
+    const pin = !fp && (ui.touch ? true : !ui.tool); // map view: the pin marks where "Go here" takes you
     this.$('h-cross').style.display = fp || pin ? 'block' : 'none';
     this.$('h-cross').classList.toggle('pin', pin);
+    this.$('h-go').style.display = fp || ui.tool ? 'none' : '';
     this.$('h-hint').style.display = fp && !ui.locked && !ui.touch ? 'block' : 'none';
     const help = fp
       ? `<b>Walk</b> WASD · <b>Run</b> Shift · <b>Jump</b> Space · <b>Look</b> mouse<br>
@@ -164,11 +179,27 @@ export class Hud {
          <b>Map view</b> Tab · <b>Overlays</b> F T · <b>Paint</b> O · <b>Pause</b> P`
       : `<b>Pan</b> WASD / middle-drag · <b>Turn</b> Q E / right-drag · <b>Zoom</b> wheel<br>
          <b>Build</b> B or 1–4, click to place · <b>Size</b> [ ] · <b>Reroll</b> R<br>
-         <b>Walk</b> Tab · <b>Overlays</b> F T · <b>Paint</b> O · <b>Pause</b> P / Space`;
+         <b>Walk</b> Tab · <b>Go to the pin</b> G · <b>Overlays</b> F T · <b>Pause</b> P / Space`;
     if (this.helpHtml !== help) { this.$('h-help').innerHTML = help; this.helpHtml = help; }
     for (const b of this.speedBtns) b.classList.toggle('on', Number(b.dataset.sp) === ui.speed);
     const cur = ui.speed === 0 ? '❚❚' : `${ui.speed}×`;
     if (this.speedLabel !== cur) { this.speedLabel = cur; this.$('h-speedcur').innerHTML = `${cur}<small>▾</small>`; }
+  }
+
+  // The walker's warmth and wetness, and a frosty vignette when cold.
+  updateNeeds(ps, viewMode) {
+    const w = Math.round(ps.warmth);
+    const col = w > 50 ? 'var(--good)' : w > 25 ? 'var(--warn)' : 'var(--bad)';
+    const wet = ps.wet > 0.66 ? 'soaked' : ps.wet > 0.33 ? 'wet' : ps.wet > 0.05 ? 'damp' : '';
+    const state = ps.hearth ? 'by the fire' : ps.swimming ? 'swimming' : w < 25 ? 'freezing! find a house' : w < 50 ? 'cold' : ps.felt < 12 ? 'chilly' : 'comfortable';
+    const key = `${w}|${wet}|${state}|${Math.round(ps.felt ?? 0)}`;
+    if (key !== this.needsKey) {
+      this.needsKey = key;
+      this.$('h-needs').innerHTML = `<div class="row"><span>🔥 Warmth</span><span class="bar"><i style="width:${w}%;background:${col}"></i></span></div>
+        <div class="sub">${state}${wet ? ' · 💧 ' + wet : ''} · feels ${Math.round(ps.felt ?? 0)}°C</div>`;
+    }
+    const frost = viewMode === 'fp' ? Math.max(0, Math.min(1, (55 - ps.warmth) / 55)) : 0;
+    this.$('h-frost').style.opacity = frost.toFixed(2);
   }
 
   // Compass strip: cardinal points, your latest building, and every beacon (owner coloured).

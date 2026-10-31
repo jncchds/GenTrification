@@ -55,7 +55,7 @@ export function cloneState(s) {
 function newPlayer(id) {
   return {
     id, wood: START.wood, food: START.food, people: START.people,
-    acc: 0, dec: 0, cap: START.baseCap, staffing: 1000, workers: 0,
+    acc: 0, dec: 0, leftToday: 0, stocked: true, cap: START.baseCap, staffing: 1000, workers: 0,
     fed: true, warm: true, nature: 850, cover: 1000, bio: 1000, parkScore: 0,
     sustained: START.people * 1000, prosperity: 0,
     foodIn: 0, woodIn: 0, foodDay: 0, woodDay: 0, foodUse: 0, woodUse: 0,
@@ -341,9 +341,15 @@ function runEconomy(world, s, p, day) {
   const woodNeed = Math.floor((pop * (ECON.heatBase * 10 + ECON.heatPerDegree * cold) * heatMul) / 10000);
   p.fed = p.food >= foodNeed;
   p.warm = p.wood >= woodNeed;
+  // Share of today's need that went unmet (per-mille): shortages hurt in proportion.
+  const foodGap = foodNeed ? Math.floor(((foodNeed - Math.min(p.food, foodNeed)) * 1000) / foodNeed) : 0;
+  const woodGap = woodNeed ? Math.floor(((woodNeed - Math.min(p.wood, woodNeed)) * 1000) / woodNeed) : 0;
   p.foodUse = foodNeed; p.woodUse = woodNeed;
   p.food -= Math.min(p.food, foodNeed);
   p.wood -= Math.min(p.wood, woodNeed);
+  // Newcomers only settle when the stores look safe: a few days of food and firewood in hand.
+  const stocked = p.food >= foodNeed * ECON.pantryDays && p.wood >= woodNeed * ECON.pantryDays;
+  p.stocked = stocked;
   p.foodDay = p.foodIn; p.woodDay = p.woodIn; p.foodIn = 0; p.woodIn = 0;
 
   const chunks = playerChunks(s, p.id);
@@ -351,18 +357,22 @@ function runEconomy(world, s, p, day) {
   p.nature = nat.nature; p.cover = nat.cover; p.bio = nat.bio; p.parkScore = nat.park;
 
   let people = pop;
-  if (p.fed && p.warm && people < cap) {
-    let rate = Math.floor((people * (12 + Math.floor((20 * p.nature) / 1000)) * birthMul) / 1000);
-    rate = Math.floor((rate * SEASON_BIRTH[season]) / 1000) + 350; // settlers keep arriving while there is room
-    p.acc += rate;
-    while (p.acc >= 1000 && people < cap) { people++; p.acc -= 1000; }
-    if (people >= cap) p.acc = 0;
+  p.leftToday = 0;
+  if (p.fed && p.warm && people <= cap) {
+    if (stocked && people < cap) {
+      let rate = Math.floor((people * (12 + Math.floor((20 * p.nature) / 1000)) * birthMul) / 1000);
+      rate = Math.floor((rate * SEASON_BIRTH[season]) / 1000) + 350; // settlers keep arriving while there is room
+      p.acc += rate;
+      while (p.acc >= 1000 && people < cap) { people++; p.acc -= 1000; }
+      if (people >= cap) p.acc = 0;
+    }
     p.dec = 0;
   } else {
-    if (!p.fed) p.dec += people * 40 + 200;
-    if (!p.warm) p.dec += people * (season === 3 ? 30 : 10) + 100;
+    // Hungry, cold or crowded households move away (gradually, in proportion to the shortfall).
+    p.dec += Math.floor((foodGap * (people * 40 + 200)) / 1000);
+    p.dec += Math.floor((woodGap * (people * (season === 3 ? 30 : 10) + 100)) / 1000);
     if (people > cap) p.dec += (people - cap) * 80;
-    while (p.dec >= 1000 && people > 0) { people--; p.dec -= 1000; }
+    while (p.dec >= 1000 && people > 0) { people--; p.dec -= 1000; p.leftToday++; }
     if (people === 0) p.dec = 0;
   }
   p.people = people;

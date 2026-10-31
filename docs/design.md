@@ -8,9 +8,12 @@ is ever stored; a save is just numbers.
 ```
 state(t) = simulate(seed, placement_log, t)
 placement = (tick, owner, type, x, y, size, building_seed)
+walker    = (x, z, yaw, warmth, wetness)      # your own player state, never read by the world
 ```
 
-**Hard rule:** everything in the simulation derives from seed + log. The simulation is
+**Hard rule:** everything in the simulation derives from seed + log. The walker's needs
+are a small player state on top of that: they read the world (weather, water, houses) but the
+world never reads them. A whole game is seed + log + player state. The simulation is
 integer-only with a seeded PRNG, so every client computes identical bits. Rendering is
 separate and uses floats, noise and shaders freely, because it only draws simulated state.
 
@@ -43,11 +46,14 @@ bad weather.
 `node tools/climate.mjs [seed] [years]` prints these statistics for any seed.
 
 - Crops grow from ~4 °C, best from 16 °C, and suffer heat stress above 30 °C. Nothing grows in winter.
-- Firewood use = cooking + a share per degree below 16 °C (daily mean).
+- Firewood use = cooking + 8 milli-wood per person per degree below 16 °C (daily mean): about
+  0.17 wood per person per day in deep winter.
 - Forest regrowth by season: spring 1.5×, summer 1.1×, autumn 0.45×, winter ~0. Rainy days help.
   Bare ground reseeds only in spring and summer, and only next to standing trees.
 - Mills and farms work in daylight (longer days in summer); storms and blizzards stop work.
-- Births follow the seasons; the cold is deadlier in winter without firewood.
+- Births follow the seasons. Newcomers only settle with ≥ 5 days of food and firewood in store.
+- Shortages: households move away in proportion to the unmet share of the day's food or
+  firewood (winter cold drives more of them away), instead of all at once.
 
 ## Simulation summary
 
@@ -58,6 +64,50 @@ bad weather.
 - Farms: food = Σ(fertility) × yield × efficiency × staffing × temperature factor. Soil wears
   about 1 point per working day (quirks change this), and recovers 0.5 per day when fallow.
 - Workers: farms need ⌈size²/4⌉, mills 2×size, reserves 1. A shortage scales all output.
+
+## The walker's needs (warmth and wetness)
+
+A cozy survival layer for the first-person walker, kept out of the world simulation.
+
+| Thing | Effect |
+|---|---|
+| Felt temperature | Air temperature at your spot (altitude lapse), minus wind chill (up to 7 °C), minus 6 °C when soaked, minus 4 °C wading / 9 °C swimming, plus 4 °C in sunshine, plus 3 °C running |
+| Warmth 0–100 | Below 12 °C felt you lose 0.03 per degree per second. Above it you warm up slowly |
+| By the fire | Within 4 cells of any house you feel at least 24 °C: warm up and dry off quickly |
+| Wetness 0–1 | Rain soaks slowly (snow slower), wading fast, swimming at once. Warm air, sun and a hearth dry you |
+| Cold | Below 40 warmth you slow down (to 70% at 0), and a frosty vignette creeps in |
+| Out of warmth | You wake at your last built house (or where you arrived, if you have none) at 70 warmth, dry |
+| Water | Shallow water is waded (slower). Deeper than ~1.4 m you swim (slow, no running or jumping) and can pull yourself out onto banks |
+
+Rough timings: a winter walk (−5 °C, breezy) lasts about 2½ minutes from full warmth; a winter
+swim about 1½; a summer swim is fine for half an hour of real time.
+
+Needs run in real seconds while you play (paused with the game). While you're away they are
+replayed hour by hour (5 s per game hour) against the seeded weather where you stood, so the
+result is still a pure function of seed + log + player state. The player state is stored in
+the save code (an optional fifth segment) and in local storage.
+
+## Balance
+
+`node tools/balance.mjs` plays several strategies on several seeds for a few years: *idle*
+(one house), *plan* (the demo bot), *steward* (reacts to food, firewood, housing and nature
+like a careful player) and *greedy* (big mills and farms, no reserves). `--set=k=v` tries
+constants without editing `rules.js`.
+
+Findings before this pass, and what changed:
+
+- **Wood didn't matter.** Stocks only ever grew (into the thousands), heating cost about
+  0.1 wood per person per winter day, and clearing forest for a farm refunded more wood than
+  the farm cost. A careful player grew to 900 people on one mill. Now firewood costs 8 per
+  degree (was 5), each tree unit gives 8 milli-wood (was 10), mills cut 20 units per size step
+  (was 14), and clearing refunds a quarter of the wood (was half). Mills now press on the
+  forest and the winter woodpile is something to plan for.
+- **Boom and bust.** Populations filled every house by autumn and then lost half to
+  famine every winter. Now newcomers need 5 days of stores, and shortages drive people away
+  in proportion to what's missing.
+- Results over 8 seeds × 3 years: a careful player reaches ~250 people with nature above
+  60%. The greedy mill village grows to ~160, then falls below the 60% nature line and goes
+  hungry every winter. Doing nothing still fails (no farms, no food).
 
 ## Visuals
 

@@ -10,6 +10,7 @@
 //   ?at=x,y              stand on this cell (first person)
 //   ?build=menu|<type>   open the build menu, or start placing a building type
 //   ?hud=0               hide the HUD (for screenshots)    ?mobile=1  force touch UI
+//   ?warmth=30           start the walker this cold (testing)
 import { LocalSession, RemoteSession } from './net/session.js';
 import { GameView } from './render/view.js';
 import { Hud, previewTip, cellTip } from './ui/hud.js';
@@ -20,6 +21,7 @@ import { HOURS } from './sim/climate.js';
 import { decodeSave } from './sim/engine.js';
 import { N } from './sim/world.js';
 import { Rng } from './sim/prng.js';
+import { stepNeeds, envAt, coldSpeed, replayAway, wakeAtHome } from './player/needs.js';
 
 const params = new URLSearchParams(location.search);
 const hudRoot = document.getElementById('hud');
@@ -100,6 +102,22 @@ async function start() {
     if (dx || dz) view.focus(home[0] - N / 2 + dx, home[1] - N / 2 + dz);
     view.fp.yaw = yaw; view.fp.pitch = pitch;
   }
+
+  // The walker: pick up where we left off (position, warmth, wetness). If time passed while we were
+  // away, replay their needs against the weather; if the cold got them, they wake at their last house.
+  const ps = session.player;
+  const spawnPos = [spawn[0] + 0.5 - N / 2, spawn[1] + 0.5 - N / 2];
+  let awayNote = null;
+  if (ps.x !== null && Number.isFinite(ps.x)) {
+    if (session.awayTicks > 0) {
+      if (session.mode === 'remote') engine.advanceTo(session.serverTick());
+      if (replayAway(engine.world, engine.state, engine.seed, ps, session.awayFrom, session.awayFrom + session.awayTicks, session.owner, spawnPos) === 'faint')
+        awayNote = 'You got too cold while you were away, and woke up warm by the fire at your house.';
+    }
+    if (!params.get('at') && !params.get('look')) { view.focus(ps.x, ps.z); view.fp.yaw = ps.yaw; }
+  }
+
+  if (params.has('warmth')) ps.warmth = Number(params.get('warmth'));
   if (params.get('view') === 'map' || params.get('cam')) {
     view.setMode('map');
     if (params.get('cam')) {
@@ -116,6 +134,7 @@ async function start() {
     size: (d) => resize(d),
     reroll: () => { ui.rollSeed = (Math.random() * 2 ** 32) >>> 0; },
     cancel: () => { ui.tool = 0; ui.menuOpen = false; },
+    goHere: () => goHere(),
     // Build button: opens/closes the menu; while placing on touch it confirms.
     buildButton: () => {
       if (ui.tool && touch) placeCurrent();
@@ -133,7 +152,8 @@ async function start() {
   }
   if (params.get('build') === 'menu') ui.menuOpen = true;
   else if (params.get('build')) selectTool(Number(params.get('build')));
-  if (session.offlineTicks > HOURS) hud.toast(`While you were away, ${Math.round(session.offlineTicks / HOURS)} days passed.`, 5000);
+  if (session.offlineTicks > HOURS) hud.toast(`While you were away, ${Math.round(session.offlineTicks / HOURS)} days passed.${awayNote ? ' ' + awayNote : ''}`, 6000);
+  else if (awayNote) hud.toast(awayNote, 6000);
   if (session.mode === 'remote') hud.toast(`Joined as player ${session.owner}`);
 
   function setSpeed(s) {
@@ -150,6 +170,18 @@ async function start() {
     const def = DEFS[ui.tool];
     if (!def) return;
     ui.size = Math.min(Math.max(ui.size + d, def.sizes[0]), def.sizes[1]);
+  }
+  // Map view: walk from the pin at the screen centre.
+  function goHere() {
+    if (view.mode !== 'map') return;
+    const t = view.map.goal.target;
+    const cx = Math.floor(t.x + N / 2), cy = Math.floor(t.z + N / 2);
+    if (cx < 1 || cy < 1 || cx >= N - 1 || cy >= N - 1) { hud.toast('Move the pin onto the island'); return; }
+    const i = cy * N + cx, id = engine.state.occ[i];
+    if (id && [T.HOUSE, T.MILL].includes(engine.state.buildings[id - 1].type)) { hud.toast('Move the pin off the building'); return; }
+    if (engine.world.water[i]) { hud.toast('Move the pin onto dry land'); return; }
+    view.teleport(t.x, t.z);
+    toggleView();
   }
   function toggleView() {
     view.setMode(view.mode === 'fp' ? 'map' : 'fp');
@@ -186,6 +218,7 @@ async function start() {
     else if (k === 'o') view.paint = !view.paint;
     else if (k === 'm') openMenu(session);
     else if (k === 'tab') { e.preventDefault(); toggleView(); }
+    else if (k === 'g') goHere();
     else if (k === 'p' || (k === ' ' && view.mode === 'map')) { setSpeed(session.speed ? 0 : 1); e.preventDefault(); }
     else if (k === ' ') e.preventDefault();
   });
@@ -227,6 +260,7 @@ async function start() {
     view.terrain.uniforms.uOverlay.value = ui.overlay;
     const st = engine.state;
     const info = view.frame(st, st.tick + (caughtUp ? session.frac : 0), engine.epoch);
+    updateWalker(dt, st);
     hud.update(st, session.owner, info, ui, session.mode);
     hud.updateBuild(ui);
     hud.updateCompass(st, session.owner, view.heading(), view.controls.target);
@@ -237,6 +271,30 @@ async function start() {
     else hud.tip(0, 0, null);
     requestAnimationFrame(loop);
   }
+  // The walker's needs, in real seconds (paused with the game).
+  const hinted = new Set();
+  const hint = (key, msg) => { if (!hinted.has(key)) { hinted.add(key); hud.toast(msg, 5000); } };
+  function updateWalker(dt, st) {
+    const fp = view.fp;
+    ps.x = fp.pos.x; ps.z = fp.pos.z; ps.yaw = fp.yaw;
+    const cx = Math.floor(ps.x + N / 2), cy = Math.floor(ps.z + N / 2);
+    const env = envAt(engine.world, st, engine.seed, st.tick, cx, cy, {
+      depth: fp.depth, swimming: fp.swimming, running: view.mode === 'fp' && !!fp.running,
+    });
+    ps.hearth = env.hearth; ps.swimming = fp.swimming;
+    const paused = session.mode === 'local' && session.speed === 0;
+    if (!paused && stepNeeds(ps, env, dt) === 'faint') {
+      const house = wakeAtHome(engine.world, st, ps, session.owner, spawnPos);
+      fp.focus(ps.x, ps.z);
+      hud.toast(house ? 'Too cold! You wake up warm by the fire at your house.'
+        : 'Too cold! You wake up back where you arrived. Build a house to have a fire to come home to.', 6000);
+    }
+    fp.speedMul = coldSpeed(ps.warmth);
+    if (fp.swimming) hint('swim', 'The water is cold! You will dry off in the sun or by a house.');
+    else if (ps.warmth < 50 && !env.hearth) hint('cold', 'You are getting cold. Stand by a house to warm up by the fire.');
+    hud.updateNeeds(ps, view.mode);
+  }
+
   requestAnimationFrame(loop);
   window.__game = { engine, view, session, ui };
   window.addEventListener('beforeunload', () => session.save());
