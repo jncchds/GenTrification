@@ -21,7 +21,7 @@ separate and uses floats, noise and shaders freely, because it only draws simula
 | Platform | Web: Three.js + Vite, plain ES modules. The sim runs unchanged in Node (tests, server). |
 | Camera | **First person** by default (walk, look, build at the crosshair). Overhead map view on Tab for planning. |
 | Mobile | Touch joystick + look-drag, build/jump/map buttons; map gestures; lower GPU settings on touch devices. |
-| Time | **1 tick = 1 hour.** 24 h days, 12-day seasons, 48-day years. 1× speed = 4 ticks/s (a day in 6 s). |
+| Time | **1 tick = 1 hour.** 24 h days, 12-day seasons, 48-day years. 1× speed = one hour every 5 s (a day in 2 min, a season in 24 min, a year in about 1.6 h). Fast-forward: 5×, 20×, 100×. Multiplayer runs at 1×. |
 | Climate | Season, temperature (with altitude lapse), clouds, rain, snow, wind and storms are pure functions of (seed, tick). Never stored. |
 | Terrain | Domain-warped fbm island, ridged mountains with terraced cliffs. Priority-flood drainage fills pits into **lakes**, flow accumulation carves **rivers**, and big drops become **waterfalls**. |
 | Chunks | 256×256 cells in 8×8 chunks of 32. Each chunk has a seeded tree-cap and fertility multiplier. Forest growth runs once a day per chunk (staggered across hours); settled chunks sleep. |

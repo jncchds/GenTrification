@@ -33,7 +33,7 @@ export class Hud {
     this.$ = (id) => root.querySelector('#' + id);
     this.$('h-menu').onclick = () => handlers.menu();
     this.speedBtns = [];
-    for (const [label, sp] of [['❚❚', 0], ['1×', 1], ['3×', 3], ['10×', 10], ['30×', 30]]) {
+    for (const [label, sp] of [['❚❚', 0], ['1×', 1], ['5×', 5], ['20×', 20], ['100×', 100]]) {
       const b = document.createElement('button');
       b.textContent = label; b.onclick = () => handlers.speed(sp);
       b.dataset.sp = sp;
@@ -74,7 +74,8 @@ export class Hud {
     const t = state.tick, day = Math.floor(t / HOURS), doy = day % YEAR_DAYS;
     const hour = t % HOURS;
     const year = Math.floor(day / YEAR_DAYS) + 1, season = Math.floor(doy / SEASON_DAYS), dos = (doy % SEASON_DAYS) + 1;
-    this.$('h-date').textContent = `Year ${year} · ${SEASONS[season]}, day ${dos} · ${String(hour).padStart(2, '0')}:00`;
+    const minute = Math.floor(((info.hourF ?? hour) % 1) * 60 / 5) * 5;
+    this.$('h-date').textContent = `Year ${year} · ${SEASONS[season]}, day ${dos} · ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     const w = info.weather;
     const sky = w.storm ? 'Storm' : info.snowing && w.rain > 0 ? 'Snow' : w.rain > 500 ? 'Heavy rain' : w.rain > 0 ? 'Rain' : w.cloud > 650 ? 'Overcast' : w.cloud > 480 ? 'Cloudy' : 'Clear';
     this.$('h-wx').textContent = `${sky} · ${info.tempC.toFixed(0)}°C · wind ${Math.round(w.wind / 10.23)}%`;

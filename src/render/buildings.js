@@ -249,7 +249,7 @@ export class Buildings {
         this.group.add(m);
       }
       const age = tickF - b.tick;
-      const g = THREE.MathUtils.clamp(age / 10, 0.02, 1);
+      const g = THREE.MathUtils.clamp(age / 2, 0.02, 1); // rises over ~2 in-game hours
       m.scale.set(1, g < 1 ? 1 - Math.pow(1 - g, 3) : 1, 1);
     }
     for (const [key, m] of this.meshes) {

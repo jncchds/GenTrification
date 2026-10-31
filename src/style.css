@@ -17,6 +17,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #a9c3d6; }
 canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }
+/* Full-screen or decorative layers must let touches and clicks reach the canvas. */
+#hud > .touch, #hud > .topbar, #hud > .crosshair, #hud > .clickhint, #hud > .tip, #hud > .toast, #hud > .loading { pointer-events: none; }
 .panel { background: var(--paper); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 
 .topbar { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: stretch; pointer-events: none; }
@@ -90,8 +92,8 @@ button.primary { background: var(--accent); color: white; }
 .touch.map #t-jump { display: none; }
 
 body.touchmode .help { display: none; }
-body.touchmode .build { left: auto; right: 10px; bottom: auto; top: 50%; transform: translateY(-50%); flex-direction: column; padding: 6px; }
-body.touchmode .build button { min-width: 64px; padding: 6px 4px; font-size: 13px; }
+body.touchmode .build { left: auto; right: 8px; bottom: auto; top: calc(118px + env(safe-area-inset-top)); transform: none; flex-direction: column; gap: 2px; padding: 4px; }
+body.touchmode .build button { min-width: 0; padding: 5px 8px; font-size: 12px; }
 body.touchmode .build button small { display: none; }
 body.touchmode .build .sz { border-left: 0; border-top: 1px solid var(--line); margin: 4px 0 0; padding: 4px 0 0; justify-content: center; }
 body.touchmode .tip { left: 50% !important; top: auto !important; bottom: calc(100px + env(safe-area-inset-bottom)); transform: translateX(-50%); }

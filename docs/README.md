@@ -53,7 +53,11 @@ npm run build         # static build in dist/
 
 URL options for testing: `?seed=123`, `?demo=18` (a bot builds a village for 18 days),
 `?hour=17`, `?view=map`, `?mobile=1`, `?hud=0`. Screenshots:
-`node tools/shot.mjs out.png "demo=18&hour=10"` (needs the dev server and Chrome).
+`node tools/shot.mjs out.png "demo=18&hour=10"`. Touch controls on an emulated phone:
+`node tools/touchtest.mjs`. Both need the dev server and Chrome.
+
+To try it on a phone on the same network, run `npm run dev` and open
+`http://<your computer's LAN IP>:5173/`.
 
 ## Multiplayer
 

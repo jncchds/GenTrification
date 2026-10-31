@@ -13,7 +13,7 @@ import { normEntry } from '../src/sim/engine.js';
 import { DEFS, T } from '../src/sim/rules.js';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8787);
-const MS_PER_TICK = Number(process.env.MS_PER_TICK || 250); // same pace as local 1x
+const MS_PER_TICK = Number(process.env.MS_PER_TICK || 5000); // same pace as local 1x
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(here, 'data');
 const DIST = path.join(here, '..', 'dist');

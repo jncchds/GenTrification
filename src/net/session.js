@@ -3,7 +3,7 @@
 import { Engine, encodeSave, decodeSave } from '../sim/engine.js';
 import { HOURS } from '../sim/climate.js';
 
-export const TICKS_PER_SEC = 4;   // 1x speed: one in-game hour every 0.25 s (a day in 6 s)
+export const TICKS_PER_SEC = 0.2; // 1x speed: one in-game hour every 5 s (a day in 2 minutes)
 const SAVE_KEY = 'gentrification.save.v1';
 const MAX_OFFLINE_DAYS = 30;
 
