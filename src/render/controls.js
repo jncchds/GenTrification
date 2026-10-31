@@ -23,7 +23,7 @@ export class RTSControls {
       if (this.drag.b === 2 && !e.shiftKey) {
         this.goal.yaw -= dx * 0.005;
         this.goal.pitch = THREE.MathUtils.clamp(this.goal.pitch + dy * 0.004, 0.18, 1.45);
-      } else this.pan(-dx * this.dist * 0.0016, -dy * this.dist * 0.0016);
+      } else this.pan(-dx * this.dist * 0.0016, dy * this.dist * 0.0016); // ground follows the cursor
     });
     dom.addEventListener('pointerup', () => { this.drag = null; });
     dom.addEventListener('wheel', (e) => {
@@ -115,21 +115,45 @@ export class FirstPersonControls {
     const tm = this.touchMove;
     let run = k.has('ShiftLeft') || k.has('ShiftRight');
     if (tm && (tm.f || tm.r)) { f += tm.f; r += tm.r; run = run || Math.hypot(tm.f, tm.r) > 0.92; }
-    const speed = (run ? 7.5 : 2.6) * dt * Math.min(1, Math.hypot(f, r));
+    const want = Math.min(1, Math.hypot(f, r));
     const len = Math.hypot(f, r) || 1;
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
-    const dx = ((fx * f - fz * r) / len) * speed, dz = ((fz * f + fx * r) / len) * speed;
-    // Slide along obstacles one axis at a time.
-    const tryMove = (nx, nz) => {
+    const mx = (fx * f - fz * r) / len, mz = (fz * f + fx * r) / len; // unit walking direction
+    const cur = this.ground(this.pos.x, this.pos.z);
+    const LOOK = 0.3;                       // look a little ahead for a stable incline reading
+    const gradeTo = (dirx, dirz) => (this.ground(this.pos.x + dirx * LOOK, this.pos.z + dirz * LOOK) - cur) / LOOK;
+    // Incline along the walking direction: climbing is slower, going downhill a little faster.
+    const grade = want > 0 ? gradeTo(mx, mz) : 0;
+    this.grade = grade;
+    const slopeK = grade > 0 ? Math.max(0.3, 1 - grade * 0.75) : Math.min(1.2, 1 - grade * 0.2);
+    const speed = (run ? 7.5 : 2.6) * dt * want * (this.onGround ? slopeK : 0.8);
+    const dx = mx * speed, dz = mz * speed;
+    const MAX_GRADE = 1.0;                  // ~45 degrees: steeper than this cannot be walked up
+    this.tooSteep = false;
+    // Move one axis at a time so we slide along obstacles and steep faces.
+    const tryMove = (nx, nz, dirx, dirz) => {
       if (Math.abs(nx) > HALF - 0.5 || Math.abs(nz) > HALF - 0.5) return false;
       if (this.blocked(nx, nz)) return false;
       const g = this.ground(nx, nz);
-      if (g < -0.35) return false; // too deep to wade
-      if (this.onGround && g - this.pos.y > 0.9) return false; // cliff
+      if (g < -0.35) return false;          // too deep to wade
+      if (!this.onGround) return g <= this.pos.y + 0.02; // in the air: only over ground below our feet (jump onto ledges)
+      if (gradeTo(dirx, dirz) > MAX_GRADE && g > cur) { this.tooSteep = true; return false; } // cliff or steep climb
       return true;
     };
-    if (tryMove(this.pos.x + dx, this.pos.z)) this.pos.x += dx;
-    if (tryMove(this.pos.x, this.pos.z + dz)) this.pos.z += dz;
+    if (dx && tryMove(this.pos.x + dx, this.pos.z, Math.sign(dx), 0)) this.pos.x += dx;
+    if (dz && tryMove(this.pos.x, this.pos.z + dz, 0, Math.sign(dz))) this.pos.z += dz;
+    // Standing on ground steeper than ~50 degrees: slide down it.
+    if (this.onGround) {
+      const e = 0.2;
+      const gx = (this.ground(this.pos.x + e, this.pos.z) - this.ground(this.pos.x - e, this.pos.z)) / (2 * e);
+      const gz = (this.ground(this.pos.x, this.pos.z + e) - this.ground(this.pos.x, this.pos.z - e)) / (2 * e);
+      const steep = Math.hypot(gx, gz);
+      if (steep > 1.2) {
+        const s = Math.min(4, (steep - 1.2) * 5) * dt / steep;
+        const nx = this.pos.x - gx * s, nz = this.pos.z - gz * s;
+        if (Math.abs(nx) < HALF - 0.5 && Math.abs(nz) < HALF - 0.5 && !this.blocked(nx, nz) && this.ground(nx, nz) > -0.35) { this.pos.x = nx; this.pos.z = nz; }
+      }
+    }
     const g = Math.max(this.ground(this.pos.x, this.pos.z), -0.3);
     if ((k.has('Space') || this.wantJump) && this.onGround) { this.vy = 3.2; this.onGround = false; }
     this.wantJump = false;

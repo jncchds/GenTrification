@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { V } from '../sim/world.js';
 import { T, millRadius, parkRadius } from '../sim/rules.js';
 import { hY, HALF, frand } from './common.js';
@@ -27,11 +28,14 @@ class Kit {
     this.parts.push(geo);
     return geo;
   }
+  // Boxes get softly rounded edges (less edgy, catches light on the corners).
   box(x, y, z, w, h, d, color, rot = 0, emit = 0) {
-    return this.add(new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0).rotateY(rot).translate(x, y, z), color, emit);
+    const r = Math.min(0.06, Math.min(w, h, d) * 0.3);
+    const g = r > 0.012 ? new RoundedBoxGeometry(w, h, d, 2, r) : new THREE.BoxGeometry(w, h, d);
+    return this.add(g.translate(0, h / 2, 0).rotateY(rot).translate(x, y, z), color, emit);
   }
-  cyl(x, y, z, r0, r1, h, color, seg = 10) { return this.add(new THREE.CylinderGeometry(r1, r0, h, seg).translate(x, y + h / 2, z), color); }
-  ball(x, y, z, r, color, sy = 1) { return this.add(new THREE.IcosahedronGeometry(r, 1).scale(1, sy, 1).translate(x, y, z), color); }
+  cyl(x, y, z, r0, r1, h, color, seg = 16) { return this.add(new THREE.CylinderGeometry(r1, r0, h, seg).translate(x, y + h / 2, z), color); }
+  ball(x, y, z, r, color, sy = 1, emit = 0) { return this.add(new THREE.IcosahedronGeometry(r, 2).scale(1, sy, 1).translate(x, y, z), color, emit); }
   // Gable roof over a w x d footprint, ridge along X.
   gable(x, y, z, w, d, rh, o, roofC, wallC, rot = 0) {
     const W = w / 2 + o, D = d / 2 + o, slant = Math.hypot(D, rh), ang = Math.atan2(rh, D);
@@ -173,6 +177,21 @@ function parkGrammar(k, b, rnd) {
   for (let i = 0; i < S * 2; i++) k.ball((rnd() - 0.5) * (S - 0.4), 0.12, (rnd() - 0.5) * (S - 0.4), 0.15 + rnd() * 0.1, fl[i % 4], 0.8);
 }
 
+// A tall waymarker: stone cairn, pole, glowing lantern and a pennant.
+function beaconGrammar(k, b, rnd) {
+  k.ball(0, 0.12, 0, 0.32, STONE, 0.6);
+  k.ball(0.12, 0.3, -0.05, 0.2, col(0.5, 0.49, 0.46), 0.8);
+  k.cyl(0, 0.2, 0, 0.06, 0.045, 2.6, WOOD, 10);
+  k.cyl(0, 2.75, 0, 0.16, 0.12, 0.22, col(1.0, 0.86, 0.55), 12);
+  k.parts[k.parts.length - 1].attributes.aEmit.array.fill(1);
+  k.add(new THREE.ConeGeometry(0.22, 0.22, 12).translate(0, 3.08, 0), DARK);
+  const flag = new THREE.BufferGeometry();
+  const L = 0.7 + rnd() * 0.2;
+  flag.setAttribute('position', new THREE.Float32BufferAttribute([0.05, 2.5, 0, 0.05 + L, 2.38, 0, 0.05, 2.22, 0, 0.05, 2.5, 0, 0.05, 2.22, 0, 0.05 + L, 2.38, 0], 3));
+  flag.computeVertexNormals();
+  k.add(flag, ownerColor(b.owner));
+}
+
 // Build the full mesh geometry for a building (also used for the placement preview).
 export function buildingGeometry(world, b) {
   const rnd = frand(b.seed ^ (b.type * 0x9e3779b9));
@@ -182,13 +201,16 @@ export function buildingGeometry(world, b) {
   else if (b.type === T.FARM) farmGrammar(k, b, rnd);
   else if (b.type === T.MILL) millGrammar(k, b, rnd, world.waterDist[ci] < 5);
   else if (b.type === T.PARK) parkGrammar(k, b, rnd);
-  // owner banner
-  const fx = -b.s / 2 + 0.25, fz = -b.s / 2 + 0.25;
-  k.cyl(fx, 0, fz, 0.025, 0.02, 1.6, WOOD, 5);
-  k.box(fx + 0.22, 1.3, fz, 0.42, 0.26, 0.02, ownerColor(b.owner));
+  else if (b.type === T.BEACON) beaconGrammar(k, b, rnd);
+  if (b.type !== T.BEACON) {
+    // owner banner
+    const fx = -b.s / 2 + 0.25, fz = -b.s / 2 + 0.25;
+    k.cyl(fx, 0, fz, 0.025, 0.02, 1.6, WOOD, 6);
+    k.box(fx + 0.22, 1.3, fz, 0.42, 0.26, 0.02, ownerColor(b.owner));
+  }
   // foundation down to the lowest terrain corner
   const { lo, hi } = footprintHeights(world, b);
-  if (b.type !== T.FARM && b.type !== T.PARK) k.box(0, lo - hi - 0.05, 0, b.s - 0.15, hi - lo + 0.07, b.s - 0.15, STONE);
+  if (b.type !== T.FARM && b.type !== T.PARK && b.type !== T.BEACON) k.box(0, lo - hi - 0.05, 0, b.s - 0.15, hi - lo + 0.07, b.s - 0.15, STONE);
   return k.build();
 }
 
@@ -202,7 +224,7 @@ function footprintHeights(world, b) {
 
 export function buildingAnchor(world, b) {
   const { lo, hi } = footprintHeights(world, b);
-  const ground = b.type === T.FARM || b.type === T.PARK ? (lo + hi) / 2 : hi;
+  const ground = b.type === T.FARM || b.type === T.PARK ? (lo + hi) / 2 : b.type === T.BEACON ? lo : hi;
   return new THREE.Vector3(b.x + b.s / 2 - HALF, ground, b.y + b.s / 2 - HALF);
 }
 
@@ -231,8 +253,43 @@ export class Buildings {
     this.world = world;
     this.group = new THREE.Group();
     this.material = buildingMaterial(env);
+    this.env = env;
     this.meshes = new Map();
   }
+  // Soft column of light above a beacon, visible from far away (stronger at night).
+  beam(owner) {
+    if (!this.beamGeo) this.beamGeo = new THREE.CylinderGeometry(0.16, 0.3, 70, 16, 1, true).translate(0, 3.1 + 35, 0);
+    this.beamMats ??= new Map();
+    let mat = this.beamMats.get(owner);
+    if (!mat) {
+      mat = new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: ownerColor(owner).clone().lerp(new THREE.Color(1, 1, 1), 0.35) }, uNight: this.env.uNight, uTime: this.env.uTime },
+        vertexShader: /* glsl */ `
+          varying float vH; varying vec3 vN; varying vec3 vV;
+          void main() {
+            vH = uv.y; vec4 wp = modelMatrix * vec4(position, 1.0);
+            vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - wp.xyz);
+            gl_Position = projectionMatrix * viewMatrix * wp;
+          }`,
+        fragmentShader: /* glsl */ `
+          uniform vec3 uColor; uniform float uNight, uTime; varying float vH; varying vec3 vN; varying vec3 vV;
+          void main() {
+            float facing = abs(dot(normalize(vN), vV));
+            float core = pow(facing, 2.0);
+            float fade = smoothstep(0.0, 0.04, vH) * pow(1.0 - vH, 1.6);
+            float shimmer = 0.85 + 0.15 * sin(vH * 60.0 - uTime * 2.0);
+            float a = core * fade * shimmer * mix(0.28, 0.75, uNight);
+            gl_FragColor = vec4(uColor * (1.0 + uNight), a);
+          }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      });
+      this.beamMats.set(owner, mat);
+    }
+    const m = new THREE.Mesh(this.beamGeo, mat);
+    m.castShadow = false; m.renderOrder = 5; m.frustumCulled = false;
+    return m;
+  }
+
   update(state, tickF) {
     const live = new Set();
     for (const b of state.buildings) {
@@ -245,6 +302,7 @@ export class Buildings {
         m.position.copy(buildingAnchor(this.world, b));
         m.castShadow = true; m.receiveShadow = true;
         m.userData.b = b;
+        if (b.type === T.BEACON) m.add(this.beam(b.owner));
         this.meshes.set(key, m);
         this.group.add(m);
       }
@@ -253,7 +311,7 @@ export class Buildings {
       m.scale.set(1, g < 1 ? 1 - Math.pow(1 - g, 3) : 1, 1);
     }
     for (const [key, m] of this.meshes) {
-      if (!live.has(key)) { this.group.remove(m); m.geometry.dispose(); this.meshes.delete(key); }
+      if (!live.has(key)) { this.group.remove(m); m.geometry.dispose(); this.meshes.delete(key); } // beam geometry is shared
     }
   }
 }

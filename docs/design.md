@@ -30,6 +30,18 @@ separate and uses floats, noise and shaders freely, because it only draws simula
 
 ## Seasons and weather in play
 
+Each season has its own weather. Fronts last several days, which is what makes a run of
+bad weather.
+
+| Season | Mean temp | Character |
+|---|---|---|
+| Spring | ~9 °C | mild, showers on about half the days, breezy |
+| Summer | ~21 °C | mostly clear (about two thirds of hours), dry spells, afternoon thunderstorms on about 1 day in 5 |
+| Autumn | ~7 °C | grey and wet, gales, foggy calm mornings, first snow late in the season |
+| Winter | ~−5 °C | snow, clear frosty nights, occasional blizzards |
+
+`node tools/climate.mjs [seed] [years]` prints these statistics for any seed.
+
 - Crops grow from ~4 °C, best from 16 °C, and suffer heat stress above 30 °C. Nothing grows in winter.
 - Firewood use = cooking + a share per degree below 16 °C (daily mean).
 - Forest regrowth by season: spring 1.5×, summer 1.1×, autumn 0.45×, winter ~0. Rainy days help.

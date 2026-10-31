@@ -57,10 +57,25 @@ const GradeShader = {
     }`,
 };
 
-export function makeComposer(renderer, scene, camera) {
+export function makeComposer(renderer, scene, camera, { samples = 4 } = {}) {
   const size = renderer.getSize(new THREE.Vector2());
-  const composer = new EffectComposer(renderer);
+  const pr = renderer.getPixelRatio();
+  // Multisampled target: without it the post chain has no anti-aliasing at all (jagged edges everywhere).
+  const target = new THREE.WebGLRenderTarget(size.x * pr, size.y * pr, { type: THREE.HalfFloatType, samples });
+  const composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
+  // Guard: one NaN/Inf or absurdly bright pixel would bloom into a big glowing blob.
+  composer.addPass(new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D tDiffuse; varying vec2 vUv;
+      void main() {
+        vec4 c = texture2D(tDiffuse, vUv);
+        if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+        gl_FragColor = vec4(min(c.rgb, vec3(8.0)), c.a);
+      }`,
+  }));
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.28, 0.5, 0.95);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());

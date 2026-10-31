@@ -2,7 +2,7 @@
 // Resources are stored in milli-units (1000 = 1 wood / 1 food). 1 tick = 1 hour.
 import { hash3 } from './prng.js';
 
-export const T = { HOUSE: 1, FARM: 2, MILL: 3, PARK: 4, DEMOLISH: 9 };
+export const T = { HOUSE: 1, FARM: 2, MILL: 3, PARK: 4, BEACON: 5, DEMOLISH: 9 };
 
 export const DEFS = {
   [T.HOUSE]: { key: 'house', name: 'House', sizes: [2, 4], maxSlope: 150, cost: (s) => 4000 * s * s, workers: () => 0,
@@ -13,6 +13,8 @@ export const DEFS = {
     desc: 'Cuts trees in a radius in daylight. Big mills can strip their forest bare.' },
   [T.PARK]: { key: 'park', name: 'Reserve', sizes: [2, 6], maxSlope: 400, cost: (s) => 2500 * s * s, workers: () => 1,
     desc: 'No output. Protects and regrows nearby forest, raises nature health.' },
+  [T.BEACON]: { key: 'beacon', name: 'Beacon', sizes: [1, 1], maxSlope: 600, cost: () => 1000, workers: () => 0,
+    desc: 'A waymarker: a light beam you can see from afar, shown on everyone\'s compass.' },
 };
 
 // Quirks rolled from the building seed. Multipliers are per-mille.
@@ -42,6 +44,7 @@ export const QUIRKS = {
     { name: 'Wildflower meadow', nature: 1500, text: '+50% nature value' },
     { name: 'Bird sanctuary', reach: 3, text: '+3 radius' },
   ],
+  [T.BEACON]: [{ name: 'Plain' }],
 };
 
 // Efficiency is 800..1200 per-mille (+-20%); 40% of buildings are plain.

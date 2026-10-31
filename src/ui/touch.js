@@ -1,6 +1,6 @@
 // Touch controls.
-//  First person: floating joystick on the left half, drag anywhere else to look,
-//                buttons for jump / build / map.
+//  First person: floating joystick on the left part, drag anywhere else to look,
+//                buttons for jump and map (the Build / confirm button lives in the HUD).
 //  Map view:     one finger pans, two fingers pinch-zoom and twist-rotate, tap picks a spot.
 export const isTouchDevice = () => matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
@@ -16,7 +16,6 @@ export class TouchControls {
       <div class="tbtns">
         <button class="tb" id="t-map" title="Map / walk">🗺</button>
         <button class="tb" id="t-jump" title="Jump">⤒</button>
-        <button class="tb primary" id="t-build" title="Build here">✓</button>
       </div>`;
     root.appendChild(el);
     this.el = el;
@@ -25,7 +24,6 @@ export class TouchControls {
     const tap = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
     tap('t-map', () => actions.toggleMap());
     tap('t-jump', () => { view.fp.wantJump = true; });
-    tap('t-build', () => actions.place());
 
     canvas.addEventListener('pointerdown', (e) => this.down(e));
     canvas.addEventListener('pointermove', (e) => this.move(e));
@@ -78,7 +76,8 @@ export class TouchControls {
       g.dist = Math.min(260, Math.max(8, (this.pinch.dist * this.pinch.d) / Math.max(now.d, 1)));
       g.yaw = this.pinch.yaw - (now.ang - this.pinch.ang);
     } else if (this.pointers.size === 1) {
-      view.map.pan(-dx * view.map.dist * 0.0022, -dy * view.map.dist * 0.0022);
+      // Grab-the-map: the ground under the finger follows it.
+      view.map.pan(-dx * view.map.dist * 0.0022, dy * view.map.dist * 0.0022);
     }
   }
 

@@ -55,5 +55,14 @@ vec3 srgb(vec3 c) { return pow(c, vec3(2.2)); }
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 `;
 
+// Drifting cloud shadows (0 = sunlit, 1 = under a cloud). Needs uNoise, uTime, uCloud, uWindDir.
+export const GLSL_CLOUDSHADOW = /* glsl */ `
+float cloudShadow(vec2 xz) {
+  vec2 wind = vec2(cos(uWindDir), sin(uWindDir)) * uTime * 0.9;
+  float n = texture2D(uNoise, (xz - wind) * 0.0045).r * 0.65 + texture2D(uNoise, (xz - wind * 1.3) * 0.011).g * 0.35;
+  float cov = mix(0.70, 0.30, uCloud);
+  return smoothstep(cov, cov + 0.12, n) * (1.0 - smoothstep(0.75, 1.0, uCloud));
+}`;
+
 // Seeded float RNG for render-only variation.
 export function frand(seed) { const r = new Rng(seed); return () => r.next() / 4294967296; }

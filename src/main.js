@@ -8,6 +8,7 @@
 //   ?view=map            start in the overhead map view (default: first person)
 //   ?cam=dist,yaw,pitch  map camera     ?look=yaw,pitch[,dx,dz]  first-person look (and offset from home)
 //   ?at=x,y              stand on this cell (first person)
+//   ?build=menu|<type>   open the build menu, or start placing a building type
 //   ?hud=0               hide the HUD (for screenshots)    ?mobile=1  force touch UI
 import { LocalSession, RemoteSession } from './net/session.js';
 import { GameView } from './render/view.js';
@@ -111,10 +112,27 @@ async function start() {
   hud = new Hud(hudRoot, {
     menu: () => openMenu(session),
     speed: (s) => setSpeed(s),
-    tool: (t) => selectTool(t),
+    tool: (t) => { selectTool(t); ui.menuOpen = false; },
     size: (d) => resize(d),
+    reroll: () => { ui.rollSeed = (Math.random() * 2 ** 32) >>> 0; },
+    cancel: () => { ui.tool = 0; ui.menuOpen = false; },
+    // Build button: opens/closes the menu; while placing on touch it confirms.
+    buildButton: () => {
+      if (ui.tool && touch) placeCurrent();
+      else if (ui.tool) ui.tool = 0;
+      else ui.menuOpen = !ui.menuOpen;
+    },
   });
   if (params.get('hud') === '0') hudRoot.style.display = 'none';
+  // Debug: hide a layer by name (?hide=mist,grass,weather,bloom) to track down visual artifacts.
+  for (const h of (params.get('hide') || '').split(',')) {
+    if (h === 'mist' && view.water.mist) view.water.mist.visible = false;
+    if (h === 'grass') view.grass.mesh.visible = false;
+    if (h === 'weather') view.fx.group.visible = false;
+    if (h === 'bloom') view.post.bloom.enabled = false;
+  }
+  if (params.get('build') === 'menu') ui.menuOpen = true;
+  else if (params.get('build')) selectTool(Number(params.get('build')));
   if (session.offlineTicks > HOURS) hud.toast(`While you were away, ${Math.round(session.offlineTicks / HOURS)} days passed.`, 5000);
   if (session.mode === 'remote') hud.toast(`Joined as player ${session.owner}`);
 
@@ -156,9 +174,10 @@ async function start() {
   window.addEventListener('keydown', (e) => {
     if (e.target.closest?.('input,textarea')) return;
     const k = e.key.toLowerCase();
-    if (k >= '1' && k <= '4') selectTool([T.HOUSE, T.FARM, T.MILL, T.PARK][k - 1]);
-    else if (k === 'x') selectTool(T.DEMOLISH);
-    else if (k === 'escape') { ui.tool = 0; closeMenu(); }
+    if (k >= '1' && k <= '5') { selectTool([T.HOUSE, T.FARM, T.MILL, T.PARK, T.BEACON][k - 1]); ui.menuOpen = false; }
+    else if (k === 'x') { selectTool(T.DEMOLISH); ui.menuOpen = false; }
+    else if (k === 'b') { if (ui.tool) ui.tool = 0; ui.menuOpen = !ui.menuOpen; }
+    else if (k === 'escape') { ui.tool = 0; ui.menuOpen = false; closeMenu(); }
     else if (k === '[') resize(-1);
     else if (k === ']') resize(1);
     else if (k === 'r') ui.rollSeed = (Math.random() * 2 ** 32) >>> 0;
@@ -183,7 +202,6 @@ async function start() {
   if (touch) {
     ui.touchCtl = new TouchControls(hudRoot, canvas, view, {
       toggleMap: toggleView,
-      place: placeCurrent,
       tapAt: (x, y) => { ui.mouse = { x, y }; ui.hover = view.pickAt(x, y); },
     });
   }
@@ -202,11 +220,14 @@ async function start() {
     ui.moved = false;
     const entry = currentEntry();
     const reason = entry ? engine.check(entry) : null;
+    ui.canPlace = !!entry && !reason;
     view.setPreview(entry, !reason);
     view.terrain.uniforms.uOverlay.value = ui.overlay;
     const st = engine.state;
     const info = view.frame(st, st.tick + (caughtUp ? session.frac : 0), engine.epoch);
     hud.update(st, session.owner, info, ui, session.mode);
+    hud.updateBuild(ui);
+    hud.updateCompass(st, session.owner, view.heading(), view.controls.target);
     ui.touchCtl?.update();
     const tx = view.mode === 'fp' ? innerWidth / 2 : ui.mouse.x, ty = view.mode === 'fp' ? innerHeight / 2 + 10 : ui.mouse.y;
     if (entry) hud.tip(tx, ty, previewTip(entry, reason));

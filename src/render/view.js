@@ -53,8 +53,8 @@ export class GameView {
     this.terrain = new Terrain(world, env);
     this.water = new Water(world, env, this.heightTex);
     this.sky = new Sky(env);
-    this.trees = new Trees(world, env, renderer, world.seed);
-    this.grass = new Grass(env, this.heightTex, this.terrain.groundTex, this.terrain.occTex, mobile ? 40000 : 120000);
+    this.trees = new Trees(world, env, renderer, world.seed, { mobile });
+    this.grass = new Grass(env, this.heightTex, this.terrain.groundTex, this.terrain.occTex, mobile ? 50000 : 160000);
     this.buildings = new Buildings(world, env);
     this.fx = new WeatherFX(env);
     scene.add(this.terrain.mesh, this.water.group, this.sky.mesh, this.trees.group, this.grass.mesh, this.buildings.group, this.fx.group);
@@ -64,12 +64,13 @@ export class GameView {
     sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
     const sc = sun.shadow.camera;
     sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 1; sc.far = 400;
-    sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
+    sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04; sun.shadow.radius = 4;
+    sun.shadow.intensity = 0.72; // softer, airier shadows (shaded areas keep some sunlight)
     scene.add(sun, sun.target);
     this.hemi = new THREE.HemisphereLight(0xbfd8ff, 0x5a4a32, 0.7);
     scene.add(this.hemi);
 
-    const post = makeComposer(renderer, scene, camera);
+    const post = makeComposer(renderer, scene, camera, { samples: mobile ? 2 : 4 });
     this.post = post;
     this.paint = !mobile;
 
@@ -119,6 +120,9 @@ export class GameView {
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix();
     this.shadowExt = ext;
   }
+
+  // Compass heading in degrees, clockwise from north (-z). Both camera modes look along (-sin yaw, -cos yaw).
+  heading() { return (((-this.controls.yaw * 180) / Math.PI) % 360 + 360) % 360; }
 
   // Ground point under the crosshair (first person) or the mouse (map).
   pickAt(clientX, clientY) {
@@ -259,7 +263,10 @@ export class GameView {
 
     const fogC = sky.horizon.clone();
     this.scene.fog.color.copy(fogC);
-    this.scene.fog.density = 0.0042 + rain * 0.012 + overcast * 0.003;
+    const mist = lerp(w0.fog, w1.fog) / 1000;
+    sm.mist = (sm.mist ?? mist) + (mist - (sm.mist ?? mist)) * Math.min(1, dt * 0.5);
+    this.scene.fog.density = 0.0042 + rain * 0.012 + overcast * 0.003 + sm.mist * 0.045;
+    if (sm.mist > 0.05) this.scene.fog.color.lerp(new THREE.Color(0.78, 0.8, 0.82).multiplyScalar(0.25 + 0.75 * sky.day), sm.mist * 0.6);
     this.post.grade.uniforms.uNight.value = night;
 
     // Shadow camera follows the view, snapped to texels to avoid shimmering.

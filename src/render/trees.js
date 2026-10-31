@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { N, BIOME } from '../sim/world.js';
 import { hash3 } from '../sim/prng.js';
-import { HALF, heightAt, frand, GLSL_COMMON } from './common.js';
+import { HALF, heightAt, frand, GLSL_COMMON, GLSL_CLOUDSHADOW, getNoiseTexture } from './common.js';
 import { GLSL_SEASON } from './terrain.js';
 
 const BROAD = 4, CONIFER = 3, VARIANTS = BROAD + CONIFER;
-const LOD_R = 58;
-const NEAR_MAX = 9000, FAR_MAX = 30000;
+const LOD_R = 50;
+const HIGH_MAX = 2500, NEAR_MAX = 9000, FAR_MAX = 30000;
 const BARK = new THREE.Color().setRGB(0.34, 0.24, 0.17, THREE.SRGBColorSpace);
 
 // Seasonal leaf colors (hue = per-tree random 0..1).
@@ -34,24 +34,24 @@ function tag(geo, color, leaf, center) {
   return geo;
 }
 
-function limb(a, b, r0, r1) {
+function limb(a, b, r0, r1, seg = 6) {
   const d = new THREE.Vector3().subVectors(b, a), len = d.length();
-  const g = new THREE.CylinderGeometry(r1, r0, len, 6, 1, true).translate(0, len / 2, 0);
+  const g = new THREE.CylinderGeometry(r1, r0, len, seg, 1, true).translate(0, len / 2, 0);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
   g.translate(a.x, a.y, a.z);
   return tag(g, BARK, 0, a);
 }
 
-// A fluffy leaf clump: lumpy icosphere with normals pointing away from its center (soft, painterly shading).
-function clump(c, r, rnd, treeTop) {
-  const g = new THREE.IcosahedronGeometry(r, 1);
+// A fluffy leaf clump: softly lumpy sphere with normals pointing away from its center (soft, painterly shading).
+// The lumps come from a smooth function of direction, so every level of detail has the same shape.
+function clump(c, r, treeTop, detail) {
+  const g = new THREE.IcosahedronGeometry(r, detail);
   const p = g.attributes.position, nrm = g.attributes.normal;
-  const bumps = new Map();
   for (let i = 0; i < p.count; i++) {
     const v = new THREE.Vector3().fromBufferAttribute(p, i);
-    const key = `${v.x.toFixed(3)},${v.y.toFixed(3)},${v.z.toFixed(3)}`;
-    if (!bumps.has(key)) bumps.set(key, 0.82 + rnd() * 0.36);
-    v.multiplyScalar(bumps.get(key));
+    const d = v.clone().normalize();
+    const lump = Math.sin(d.x * 3.1 + c.x * 5.3) * Math.sin(d.y * 2.7 + c.y * 4.1) * Math.sin(d.z * 3.3 + c.z * 6.7);
+    v.multiplyScalar(0.92 + 0.14 * lump + 0.05 * Math.sin(d.x * 7 + d.z * 5 + c.y * 9));
     v.y *= 0.82;
     p.setXYZ(i, v.x + c.x, v.y + c.y, v.z + c.z);
     const n = v.clone().normalize();
@@ -70,13 +70,13 @@ function clump(c, r, rnd, treeTop) {
   return geo;
 }
 
-function broadleaf(seed) {
+function broadleaf(seed, detail = 1) {
   const rnd = frand(seed);
   const parts = [], tips = [];
   const up = new THREE.Vector3(0, 1, 0);
   const grow = (p, dir, len, rad, depth) => {
     const end = p.clone().addScaledVector(dir, len);
-    parts.push(limb(p, end, rad, rad * 0.68));
+    parts.push(limb(p, end, rad, rad * 0.68, detail > 1 ? 9 : 6));
     if (depth >= 3 || (depth >= 2 && rnd() < 0.35)) { tips.push(end); return; }
     const kids = 2 + (rnd() < 0.55 ? 1 : 0);
     const spin = rnd() * Math.PI * 2;
@@ -90,9 +90,9 @@ function broadleaf(seed) {
   grow(new THREE.Vector3(0, -0.2, 0), up, 1.0 + rnd() * 0.5, 0.13, 0);
   let top = 0;
   for (const t of tips) top = Math.max(top, t.y);
-  for (const t of tips) parts.push(clump(t, 0.5 + rnd() * 0.32, rnd, top + 0.6));
+  for (const t of tips) parts.push(clump(t, 0.5 + rnd() * 0.32, top + 0.6, detail));
   const cen = new THREE.Vector3(0, top * 0.82, 0);
-  parts.push(clump(cen, 0.85 + rnd() * 0.25, rnd, top + 0.6));
+  parts.push(clump(cen, 0.85 + rnd() * 0.25, top + 0.6, detail));
   return mergeGeometries(parts);
 }
 
@@ -107,12 +107,18 @@ function conifer(seed) {
     const y = 0.55 + f * (H - 1.1);
     const r = 0.95 * (1 - f * 0.78) + 0.12;
     const h = 0.9 - f * 0.25;
-    const g = new THREE.ConeGeometry(r, h, 9, 1, true);
+    const g = new THREE.ConeGeometry(r, h, 16, 2, true);
     const p = g.attributes.position, nrm = g.attributes.normal;
+    const ph = rnd() * 6.28;
     for (let k = 0; k < p.count; k++) {
       const vy = p.getY(k);
       let vx = p.getX(k), vz = p.getZ(k);
-      if (vy < 0) { const j = 0.85 + rnd() * 0.3; vx *= j; vz *= j; p.setY(k, vy - rnd() * 0.12); }
+      if (vy < 0) {
+        // Soft scalloped rim instead of random spikes.
+        const a = Math.atan2(vz, vx);
+        const j = 0.92 + 0.1 * Math.sin(a * 5 + ph) + 0.04 * Math.sin(a * 11 + ph * 2);
+        vx *= j; vz *= j; p.setY(k, vy - 0.06 - 0.05 * Math.sin(a * 7 + ph));
+      }
       p.setX(k, vx); p.setZ(k, vz);
       const n = new THREE.Vector3(vx, 0.6, vz).normalize();
       nrm.setXYZ(k, n.x, n.y, n.z);
@@ -133,33 +139,56 @@ function conifer(seed) {
 
 // ---------------------------------------------------------------- materials
 
+// Foliage shading: leafy cut-out silhouettes (no hard polygon edges), light glowing through
+// backlit leaves, a soft rim and wrapped ambient so the shaded side stays airy, plus cloud shadows.
 function nearMaterial(env, isConifer) {
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0 });
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
   mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, env);
+    Object.assign(sh.uniforms, env, { uNoise: { value: getNoiseTexture() } });
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
         attribute float aLeaf; attribute vec3 aCenter; attribute float aHue;
         uniform float uTime, uWind, uLeafAmt;
-        varying float vLeaf; varying float vHue; varying float vUp;`)
+        varying float vLeaf; varying float vHue; varying float vUp; varying vec3 vLeafW;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         float amt = ${isConifer ? '1.0' : 'uLeafAmt'};
         if (aLeaf > 0.5) transformed = mix(aCenter, transformed, max(amt, 0.03));
         vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
         float sway = (sin(uTime * 1.3 + ip.x * 0.37 + ip.z * 0.21) + 0.5 * sin(uTime * 2.9 + ip.x)) * (0.15 + uWind) * 0.035 * max(position.y, 0.0);
         transformed.x += sway; transformed.z += sway * 0.6;
-        vLeaf = aLeaf; vHue = aHue; vUp = normal.y;`);
+        vLeaf = aLeaf; vHue = aHue; vUp = normal.y;
+        vLeafW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         ${GLSL_COMMON}
         ${GLSL_SEASON}
         ${GLSL_LEAF}
-        uniform float uSeason, uSnowCover, uSnowLine;
-        varying float vLeaf; varying float vHue; varying float vUp;`)
+        uniform sampler2D uNoise;
+        uniform float uSeason, uSnowCover, uSnowLine, uTime, uCloud, uWindDir, uSunI;
+        uniform vec3 uSunDir, uSunColor, uAmbient;
+        varying float vLeaf; varying float vHue; varying float vUp; varying vec3 vLeafW;
+        ${GLSL_CLOUDSHADOW}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         if (vLeaf > 0.5) {
           diffuseColor.rgb = leafColor(uSeason, vHue, ${isConifer ? '1.0' : '0.0'}) * vColor.r * 1.15;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.95, 1.0), uSnowCover * smoothstep(0.35, 0.8, vUp) * 0.85);
+        }
+        diffuseColor.rgb *= 1.0 - 0.3 * cloudShadow(vLeafW.xz);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (vLeaf > 0.5) {
+          // Leafy silhouette: bite noise-shaped holes out of the clump edges.
+          float edge = 1.0 - abs(dot(normal, normalize(vViewPosition)));
+          float ln = texture2D(uNoise, vLeafW.xy * 1.9 + vLeafW.zx * 1.3).r * 0.6 + texture2D(uNoise, vLeafW.zy * 4.1).g * 0.4;
+          if (edge > 0.5 && ln < (edge - 0.5) * 1.5) discard;
+        }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        if (vLeaf > 0.5) {
+          vec3 Vd = normalize(vViewPosition);
+          vec3 Ls = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz);
+          float back = pow(clamp(dot(-Vd, Ls), 0.0, 1.0), 3.0);
+          float rim = pow(clamp(1.0 - abs(dot(normal, Vd)), 0.0, 1.0), 2.5); // clamp: pow of a negative is NaN (blooms into blobs)
+          vec3 sunC = uSunColor * uSunI;
+          reflectedLight.indirectDiffuse += diffuseColor.rgb * (sunC * (0.55 * back + 0.2 * rim) + uAmbient * 0.45);
         }`);
   };
   return mat;
@@ -253,20 +282,30 @@ function captureImpostor(renderer, geo, bbox, leafAmt) {
 // ---------------------------------------------------------------- manager
 
 export class Trees {
-  constructor(world, env, renderer, seed) {
+  constructor(world, env, renderer, seed, { mobile = false } = {}) {
     this.world = world;
     this.group = new THREE.Group();
-    this.near = []; this.far = [];
+    // Three levels of detail: smooth trees close by, standard ones at mid range, billboards beyond.
+    this.highR = mobile ? 0 : 16;
+    this.lodR = mobile ? 38 : LOD_R;
+    this.high = []; this.near = []; this.far = [];
+    const instanced = (geo, mat, max) => {
+      geo.setAttribute('aHue', new THREE.InstancedBufferAttribute(new Float32Array(max), 1));
+      const m = new THREE.InstancedMesh(geo, mat, max);
+      m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+      this.group.add(m);
+      return m;
+    };
     for (let v = 0; v < VARIANTS; v++) {
       const isCon = v >= BROAD;
-      const geo = isCon ? conifer(seed + v * 7919) : broadleaf(seed + v * 7919);
+      const geo = isCon ? conifer(seed + v * 7919) : broadleaf(seed + v * 7919, 1);
       geo.computeBoundingBox();
       const bbox = geo.boundingBox;
-      const hue = new THREE.InstancedBufferAttribute(new Float32Array(NEAR_MAX), 1);
-      geo.setAttribute('aHue', hue);
-      const nm = new THREE.InstancedMesh(geo, nearMaterial(env, isCon), NEAR_MAX);
-      nm.count = 0; nm.castShadow = true; nm.receiveShadow = true; nm.frustumCulled = false;
-      this.near.push(nm); this.group.add(nm);
+      const mat = nearMaterial(env, isCon);
+      this.near.push(instanced(geo, mat, NEAR_MAX));
+      // Conifers are already smooth enough; their high tier reuses the standard geometry.
+      const hgeo = isCon ? geo.clone() : broadleaf(seed + v * 7919, 2);
+      this.high.push(this.highR ? instanced(hgeo, mat, HIGH_MAX) : null);
 
       const full = captureImpostor(renderer, geo, bbox, 1.0);
       const bare = isCon ? full : captureImpostor(renderer, geo, bbox, 0.06);
@@ -308,15 +347,15 @@ export class Trees {
   }
 
   update(state, epoch, center, force = false) {
-    let changed = force || epoch !== this.seenEpoch || center.distanceTo(this.lastCenter) > 10;
+    let changed = force || epoch !== this.seenEpoch || center.distanceTo(this.lastCenter) > 4;
     if (!this.seenVer) this.seenVer = new Uint32Array(state.chunkVer.length).fill(0xffffffff);
     for (let c = 0; c < state.chunkVer.length; c++) if (state.chunkVer[c] !== this.seenVer[c]) { changed = true; this.seenVer[c] = state.chunkVer[c]; }
     if (!changed) return;
     this.seenEpoch = epoch;
     this.lastCenter.copy(center);
-    const nearN = new Int32Array(VARIANTS), farN = new Int32Array(VARIANTS);
+    const highN = new Int32Array(VARIANTS), nearN = new Int32Array(VARIANTS), farN = new Int32Array(VARIANTS);
     const { trees, occ } = state, cap = this.world.cap, slot = this.slot;
-    const r2 = LOD_R * LOD_R, cx = center.x, cz = center.y;
+    const r2 = this.lodR * this.lodR, h2 = this.highR * this.highR, cx = center.x, cz = center.y;
     for (let i = 0; i < N * N; i++) {
       const t = trees[i];
       if (t < 60 || occ[i]) continue;
@@ -327,11 +366,12 @@ export class Trees {
         const o = j * 6, v = this.variant[j];
         const x = slot[o], y = slot[o + 1], z = slot[o + 2];
         const size = slot[o + 4] * (0.5 + 0.5 * fill);
-        const dx = x - cx, dz = z - cz;
-        const isNear = dx * dx + dz * dz < r2;
-        const mesh = isNear ? this.near[v] : this.far[v];
-        const n = isNear ? nearN[v] : farN[v];
-        if (n >= (isNear ? NEAR_MAX : FAR_MAX)) continue;
+        const dx = x - cx, dz = z - cz, d2 = dx * dx + dz * dz;
+        const tier = d2 < h2 ? 0 : d2 < r2 ? 1 : 2;
+        const mesh = tier === 0 ? this.high[v] : tier === 1 ? this.near[v] : this.far[v];
+        const counts = tier === 0 ? highN : tier === 1 ? nearN : farN;
+        const n = counts[v];
+        if (n >= (tier === 0 ? HIGH_MAX : tier === 1 ? NEAR_MAX : FAR_MAX)) continue;
         const c = Math.cos(slot[o + 3]) * size, s = Math.sin(slot[o + 3]) * size;
         const m = mesh.instanceMatrix.array, b = n * 16;
         m[b] = c; m[b + 1] = 0; m[b + 2] = -s; m[b + 3] = 0;
@@ -339,11 +379,12 @@ export class Trees {
         m[b + 8] = s; m[b + 9] = 0; m[b + 10] = c; m[b + 11] = 0;
         m[b + 12] = x; m[b + 13] = y; m[b + 14] = z; m[b + 15] = 1;
         mesh.geometry.attributes.aHue.array[n] = slot[o + 5];
-        if (isNear) nearN[v]++; else farN[v]++;
+        counts[v]++;
       }
     }
     for (let v = 0; v < VARIANTS; v++) {
-      for (const [mesh, n] of [[this.near[v], nearN[v]], [this.far[v], farN[v]]]) {
+      for (const [mesh, n] of [[this.high[v], highN[v]], [this.near[v], nearN[v]], [this.far[v], farN[v]]]) {
+        if (!mesh) continue;
         mesh.count = n;
         mesh.instanceMatrix.needsUpdate = true;
         mesh.geometry.attributes.aHue.needsUpdate = true;

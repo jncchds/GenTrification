@@ -18,7 +18,7 @@ canvas#view { position: fixed; inset: 0; width: 100vw; height: 100vh; display: b
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }
 /* Full-screen or decorative layers must let touches and clicks reach the canvas. */
-#hud > .touch, #hud > .topbar, #hud > .crosshair, #hud > .clickhint, #hud > .tip, #hud > .toast, #hud > .loading { pointer-events: none; }
+#hud > .touch, #hud > .topbar, #hud > .crosshair, #hud > .clickhint, #hud > .tip, #hud > .toast, #hud > .loading, #hud > .compass, #hud > .buildarea { pointer-events: none; }
 .panel { background: var(--paper); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
 
 .topbar { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: stretch; pointer-events: none; }
@@ -50,11 +50,33 @@ button.primary { background: var(--accent); color: white; }
 .muted { color: var(--ink-soft); }
 .score { font-size: 24px; font-weight: 600; }
 
-.build { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 8px; }
-.build button { display: flex; flex-direction: column; align-items: center; min-width: 78px; padding: 6px 10px; }
-.build button small { font-size: 11px; color: var(--ink-soft); }
-.build button.on small { color: #eadfc8; }
-.build .sz { display: flex; align-items: center; gap: 4px; padding: 0 6px; border-left: 1px solid var(--line); margin-left: 4px; }
+/* Build: one button opens the menu; picking a building shows the placing bar. */
+.buildarea { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.buildarea > * { pointer-events: auto; }
+.buildbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 96px; padding: 8px 16px; font-size: 22px; line-height: 1; color: var(--ink); }
+.buildbtn small { font-size: 12px; margin-top: 3px; }
+.buildbtn.open { background: var(--paper-solid); }
+.buildbtn.confirm { background: var(--accent); color: white; border-color: transparent; }
+.buildbtn.dim { opacity: 0.5; }
+.buildmenu { display: flex; gap: 4px; padding: 6px; }
+.buildmenu button { display: flex; flex-direction: column; align-items: center; min-width: 82px; padding: 6px 10px; }
+.buildmenu button small { font-size: 11px; color: var(--ink-soft); }
+.buildmenu button.on small { color: #eadfc8; }
+.placing { display: flex; align-items: center; gap: 4px; padding: 6px 8px; font-size: 14px; }
+.placing .pname { font-weight: 600; padding: 0 8px; }
+.placing .sz { display: flex; align-items: center; gap: 2px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0 4px; }
+
+/* Compass: cardinal points, your latest building and beacons. */
+.compass { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 380px; height: 44px; overflow: hidden; pointer-events: none; border-radius: 12px; }
+.compass .ticks span, .compass .ticks b, .compass .mk { position: absolute; transform: translateX(-50%); }
+.compass .ticks span { top: 4px; font-size: 13px; color: var(--ink-soft); }
+.compass .ticks span.card { font-weight: 700; color: var(--ink); font-size: 15px; top: 3px; }
+.compass .ticks b { top: 7px; width: 1px; height: 8px; background: var(--ink-soft); opacity: 0.6; }
+.compass .mk { top: 18px; font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; text-shadow: 0 0 3px var(--paper-solid); }
+.compass .mk small { font-size: 10px; color: var(--ink-soft); margin-top: 1px; }
+.compass .mk.off { opacity: 0.55; top: 14px; }
+.compass .center { position: absolute; left: 50%; top: 0; width: 2px; height: 6px; margin-left: -1px; background: var(--accent); }
+@media (max-width: 1250px) { .compass { top: 84px; width: 320px; } .nature { top: 136px; } }
 
 .tip { position: absolute; padding: 8px 12px; font-size: 13px; max-width: 300px; pointer-events: none; transform: translate(16px, 16px); }
 .tip .t { font-weight: 600; }
@@ -92,11 +114,16 @@ button.primary { background: var(--accent); color: white; }
 .touch.map #t-jump { display: none; }
 
 body.touchmode .help { display: none; }
-body.touchmode .build { left: auto; right: 8px; bottom: auto; top: calc(118px + env(safe-area-inset-top)); transform: none; flex-direction: column; gap: 2px; padding: 4px; }
-body.touchmode .build button { min-width: 0; padding: 5px 8px; font-size: 12px; }
-body.touchmode .build button small { display: none; }
-body.touchmode .build .sz { border-left: 0; border-top: 1px solid var(--line); margin: 4px 0 0; padding: 4px 0 0; justify-content: center; }
-body.touchmode .tip { left: 50% !important; top: auto !important; bottom: calc(100px + env(safe-area-inset-bottom)); transform: translateX(-50%); }
+body.touchmode .buildarea { left: auto; right: 14px; transform: none; bottom: calc(16px + env(safe-area-inset-bottom)); align-items: flex-end; }
+body.touchmode .buildbtn { width: 72px; height: 72px; min-width: 0; padding: 0; border-radius: 50%; font-size: 26px; }
+body.touchmode .buildbtn small { font-size: 11px; }
+body.touchmode .buildmenu { flex-direction: column; gap: 2px; padding: 4px; }
+body.touchmode .buildmenu button { min-width: 120px; flex-direction: row; justify-content: space-between; gap: 8px; padding: 9px 12px; font-size: 15px; }
+body.touchmode .buildmenu .key { display: none; }
+body.touchmode .placing { font-size: 15px; padding: 4px; }
+body.touchmode .placing button { min-width: 40px; min-height: 40px; font-size: 18px; }
+body.touchmode .touch .tbtns { right: 100px; }
+body.touchmode .tip { left: 50% !important; top: auto !important; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 24px); }
 
 @media (max-width: 900px) {
   .topbar { top: calc(8px + env(safe-area-inset-top)); left: 8px; right: 8px; gap: 6px; flex-wrap: wrap; }
@@ -112,5 +139,6 @@ body.touchmode .tip { left: 50% !important; top: auto !important; bottom: calc(1
   .nature { display: none; }
   .help { display: none; }
   .mininature { display: block !important; }
+  .compass { top: calc(104px + env(safe-area-inset-top)); width: calc(100vw - 16px); max-width: 420px; height: 40px; }
 }
-.mininature { display: none; position: absolute; left: 8px; top: calc(110px + env(safe-area-inset-top)); padding: 5px 10px; font-size: 13px; }
+.mininature { display: none; position: absolute; left: 8px; top: calc(150px + env(safe-area-inset-top)); padding: 5px 10px; font-size: 13px; }

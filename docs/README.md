@@ -28,16 +28,23 @@ You walk the world in first person. Build where the crosshair points.
   Cutting faster than it grows strips the area bare, and bare ground only reseeds from
   neighbouring trees.
 - **Reserves** protect nearby trees from mills, double their regrowth, and raise nature health.
+- **Beacons** are cheap waymarkers with a light beam you can see from far away. The
+  compass at the top shows every beacon (in its owner's colour) and your latest building.
 - Every building rolls ±20% efficiency and sometimes a quirk (Cozy, Greedy saws,
   Rotational…). Press **R** before placing to reroll.
+- Walking follows the land: climbs are slower, slopes steeper than about 45° can't be
+  climbed (jump onto ledges), and very steep ground makes you slide.
+- Each season has its own weather. Spring: mild, with showers. Summer: warm and mostly
+  sunny, with afternoon thunderstorms. Autumn: grey and wet, with gales and morning fog.
+  Winter: snow, frosty clear nights and blizzards.
 
 ### Controls
 
 | | Desktop | Touch |
 |---|---|---|
 | Walk / look | WASD + mouse (click to capture), Shift to run, Space to jump | Left thumb joystick, drag to look, ⤒ to jump |
-| Build | 1–4 pick a building, click to place, `[` `]` or wheel for size, R reroll, X demolish | Pick on the right panel, ✓ to place at the crosshair |
-| Map view | Tab (WASD pan, right-drag turn, wheel zoom) | 🗺 (drag pan, pinch zoom and turn, tap a spot then ✓) |
+| Build | B (or 1–5) opens the build menu, click to place, `[` `]` or wheel for size, R reroll, X demolish, Esc cancel | 🔨 opens the menu, pick a building, then ✓ places it at the crosshair (− + ↻ ✕ above it) |
+| Map view | Tab (WASD pan, middle-drag to grab the map, right-drag turn, wheel zoom) | 🗺 (drag pan, pinch zoom and turn, tap a spot then ✓) |
 | Other | P pause, F fertility overlay, T tree overlay, O paint filter, M menu | ☰ menu |
 
 The menu has new worlds from a seed, save codes (copy or paste), and multiplayer.

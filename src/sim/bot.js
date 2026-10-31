@@ -23,7 +23,7 @@ export function findHome(world, s, owner, rng) {
 }
 
 const PLAN = [
-  [T.FARM, 4], [T.HOUSE, 3], [T.MILL, 2], [T.HOUSE, 2], [T.FARM, 5], [T.HOUSE, 3], [T.PARK, 3],
+  [T.FARM, 4], [T.HOUSE, 3], [T.BEACON, 1], [T.MILL, 2], [T.HOUSE, 2], [T.FARM, 5], [T.HOUSE, 3], [T.PARK, 3],
   [T.FARM, 4], [T.HOUSE, 4], [T.HOUSE, 3], [T.MILL, 2], [T.FARM, 5], [T.PARK, 4], [T.HOUSE, 3],
 ];
 

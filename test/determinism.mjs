@@ -59,6 +59,7 @@ for (let t = 0; t <= TICKS; t++) {
   while (k < pending.length && pending[k].arrive <= t) { C.add(pending[k].e); k++; }
   if (t < TICKS) C.advanceTo(t + 1);
 }
+while (k < pending.length) C.add(pending[k++].e); // stragglers that arrive after the last tick
 check('late, shuffled delivery with rollbacks', C.hash() === hashA, `(${rollbacks} rollbacks)`);
 
 // 4. Save code round trip.

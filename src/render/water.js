@@ -55,12 +55,12 @@ const WATER_FS = /* glsl */ `
     col *= mix(1.0, 0.55, uCloud * 0.6) * mix(1.0, 0.25, uNight);
     col = mix(col, sky, 0.15 + 0.6 * fres);
     float spec = pow(max(dot(R, uSunDir), 0.0), 220.0) * (1.0 - uCloud * 0.8);
-    col += uSunColor * spec * 3.0;
+    col += uSunColor * min(spec * 1.2, 0.6); // gentle glints (strong ones bloom into blobs)
 
     // Shore foam and river rapids.
     float fn = texture2D(uNoise, vWPos.xz * 0.35 + vec2(uTime * 0.03, -uTime * 0.02)).g;
     float shore = smoothstep(0.35, 0.0, depth + (fn - 0.5) * 0.25);
-    float rapids = vRiver * smoothstep(0.08, 0.25, steep) * smoothstep(0.45, 0.75, fn);
+    float rapids = vRiver * smoothstep(0.16, 0.35, steep) * smoothstep(0.5, 0.8, fn);
     // Waterfall streaks fall along the flow.
     float streak = texture2D(uNoise, vec2(dot(vWPos.xz, vec2(vFlow.y, -vFlow.x)) * 0.9, vWPos.y * 0.25 + uTime * 0.6)).b;
     float foam = max(shore * 0.8, rapids * 0.7);

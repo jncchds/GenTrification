@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node server/server.js",
-    "test": "node test/determinism.mjs && node test/multiplayer.mjs",
+    "test": "node test/determinism.mjs && node test/multiplayer.mjs && node test/movement.mjs",
     "shot": "node tools/shot.mjs"
   },
   "dependencies": {

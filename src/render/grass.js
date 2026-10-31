@@ -1,19 +1,18 @@
 import * as THREE from 'three';
 import { N, V } from '../sim/world.js';
 import { T } from '../sim/rules.js';
-import { HALF, GLSL_COMMON, getNoiseTexture } from './common.js';
+import { HALF, GLSL_COMMON, GLSL_CLOUDSHADOW, getNoiseTexture } from './common.js';
 import { GLSL_SEASON } from './terrain.js';
 
 const R = 22;          // patch half-size (world units) around the player
 
 export class Grass {
   constructor(env, heightTex, groundTex, occTex, COUNT = 120000) {
-    // One blade: a tapered, slightly curved strip (3 segments).
-    const blade = new THREE.BufferGeometry();
+    // One blade: a soft, round-tipped strip (4 segments) rather than a sharp spike.
     const P = [], Y = [];
-    const segs = 3;
+    const segs = 4;
     for (let i = 0; i <= segs; i++) {
-      const t = i / segs, w = 0.012 * (1 - t * 0.85);
+      const t = i / segs, w = 0.017 * (1 - t * t * 0.72);
       P.push(-w, t, 0, w, t, 0); Y.push(t, t);
     }
     const idx = [];
@@ -44,7 +43,7 @@ export class Grass {
         attribute vec2 aOff; attribute vec4 aRnd; attribute float aT;
         uniform sampler2D uHeight, uGround, uOcc, uNoise;
         uniform vec2 uCenter; uniform float uTime, uWind, uWindDir, uSeason, uSnowLine, uSnowCover;
-        varying float vT; varying vec3 vCol; varying float vFlower;
+        varying float vT; varying vec3 vCol; varying float vFlower; varying vec3 vWorld;
         #include <fog_pars_vertex>
         void main() {
           // Toroidal wrap keeps blades fixed in the world while the patch follows the camera.
@@ -63,8 +62,9 @@ export class Grass {
           float d = length(wp - uCenter) / ${R.toFixed(1)};
           float keep = step(aRnd.x, dens) * smoothstep(1.0, 0.75, d) * (1.0 - snow * 0.9);
           float n = texture2D(uNoise, wp * 0.05).r;
+          float tuft = texture2D(uNoise, wp * 0.7).g; // grass grows in soft tufts
           float near = smoothstep(0.25, 1.2, length(wp - cameraPosition.xz));
-          float h = (0.04 + 0.07 * aRnd.y) * (0.6 + 0.8 * n) * keep * near * seasonPickF(uSeason, 0.85, 1.1, 0.9, 0.45);
+          float h = (0.04 + 0.07 * aRnd.y) * (0.6 + 0.8 * n) * (0.55 + 0.7 * tuft) * keep * near * seasonPickF(uSeason, 0.85, 1.1, 0.9, 0.45);
           float flowerChance = (type == ${T.PARK} ? 0.25 : 0.035) * seasonPickF(uSeason, 1.4, 1.0, 0.25, 0.0);
           vFlower = step(aRnd.z, flowerChance);
           if (vFlower > 0.5) h *= 1.2;
@@ -85,19 +85,26 @@ export class Grass {
             float k = fract(aRnd.z * 37.0);
             vCol = k < 0.3 ? srgb(vec3(1.0, 0.92, 0.95)) : k < 0.55 ? srgb(vec3(1.0, 0.85, 0.25)) : k < 0.8 ? srgb(vec3(0.95, 0.45, 0.65)) : srgb(vec3(0.62, 0.48, 0.95));
           }
-          vT = aT;
+          vT = aT; vWorld = world;
           vec4 mvPosition = viewMatrix * vec4(world, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           #include <fog_vertex>
         }`,
       fragmentShader: /* glsl */ `
-        uniform vec3 uSunDir, uSunColor, uAmbient; uniform float uSunI, uWet;
-        varying float vT; varying vec3 vCol; varying float vFlower;
+        uniform vec3 uSunDir, uSunColor, uAmbient; uniform float uSunI, uWet, uTime, uCloud, uWindDir;
+        uniform sampler2D uNoise;
+        varying float vT; varying vec3 vCol; varying float vFlower; varying vec3 vWorld;
         #include <fog_pars_fragment>
+        ${GLSL_CLOUDSHADOW}
         void main() {
-          float sun = max(uSunDir.y, 0.0);
-          vec3 col = vCol * (uAmbient * (0.6 + 0.4 * vT) + uSunColor * uSunI * sun * (0.45 + 0.55 * vT));
+          float sun = max(uSunDir.y, 0.0) * (1.0 - 0.7 * cloudShadow(vWorld.xz));
+          // Backlit tips glow when looking towards the sun.
+          vec3 toFrag = vWorld - cameraPosition;
+          float back = pow(clamp(dot(toFrag / max(length(toFrag), 1e-3), uSunDir), 0.0, 1.0), 4.0) * clamp(vT, 0.0, 1.0);
+          vec3 col = vCol * (uAmbient * (0.65 + 0.35 * vT) + uSunColor * uSunI * (sun * (0.45 + 0.55 * vT) + back * 0.6));
           col *= 1.0 - 0.2 * uWet;
+          if (any(isnan(col)) || any(isinf(col))) col = vec3(0.0);
+          col = min(col, vec3(1.5));
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

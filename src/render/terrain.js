@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { N, V, BIOME } from '../sim/world.js';
 import { T } from '../sim/rules.js';
-import { hY, HALF, getNoiseTexture, GLSL_COMMON } from './common.js';
+import { hY, HALF, getNoiseTexture, GLSL_COMMON, GLSL_CLOUDSHADOW } from './common.js';
 
 // Season palette helper shared by terrain / trees / grass shaders.
 export const GLSL_SEASON = /* glsl */ `
@@ -91,9 +91,10 @@ export class Terrain {
           ${GLSL_COMMON}
           ${GLSL_SEASON}
           uniform sampler2D uNoise, uGround, uOcc;
-          uniform float uTime, uSeason, uSnowLine, uSnowCover, uWet, uOverlay, uCloud;
+          uniform float uTime, uSeason, uSnowLine, uSnowCover, uWet, uOverlay, uCloud, uWindDir;
           uniform vec3 uSunDir;
           varying vec4 vWA; varying vec4 vWB; varying vec3 vWPos; varying vec3 vWN;
+          ${GLSL_CLOUDSHADOW}
           float gSnow; float gWet;
           vec3 terrainColor() {
             vec2 uvc = (vWPos.xz + ${HALF.toFixed(1)}) / ${N.toFixed(1)};
@@ -120,10 +121,13 @@ export class Terrain {
             c = mix(c, forestF, smoothstep(0.15, 0.85, g.g) * 0.45);
             // Fresh-water banks: lush, darker.
             float slope = 1.0 - vWN.y;
-            float rk = smoothstep(0.32, 0.55, slope + (n2.r - 0.5) * 0.18);
+            float rk = smoothstep(0.26, 0.62, slope + (n2.r - 0.5) * 0.22);
             c = mix(c, rockC, rk);
-            // Painterly brush variation.
+            // Painterly brush variation, plus fine soil detail that only matters up close.
             c *= 0.92 + 0.16 * n3.a;
+            vec4 n5 = texture2D(uNoise, vWPos.xz * 1.4);
+            float closeK = 1.0 - smoothstep(4.0, 25.0, length(cameraPosition - vWPos));
+            c *= 1.0 + (n5.b - 0.5) * 0.22 * closeK;
 
             ivec2 cell = clamp(ivec2(floor(vWPos.xz + ${HALF.toFixed(1)})), ivec2(0), ivec2(${N - 1}));
             vec4 o = texelFetch(uOcc, cell, 0);
@@ -165,7 +169,11 @@ export class Terrain {
         .replace('#include <color_fragment>', `diffuseColor.rgb = terrainColor();`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
           roughnessFactor = mix(roughnessFactor, 0.35, gWet * 0.8);
-          roughnessFactor = mix(roughnessFactor, 0.6, gSnow);`);
+          roughnessFactor = mix(roughnessFactor, 0.6, gSnow);`)
+        .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+          float cs = cloudShadow(vWPos.xz);
+          reflectedLight.directDiffuse *= 1.0 - 0.65 * cs;
+          reflectedLight.directSpecular *= 1.0 - 0.8 * cs;`);
     };
     this.material = mat;
     this.uniforms = U;
