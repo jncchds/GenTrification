@@ -352,8 +352,8 @@ function runEconomy(world, s, p, day) {
 
   let people = pop;
   if (p.fed && p.warm && people < cap) {
-    let rate = Math.floor((people * (5 + Math.floor((10 * p.nature) / 1000)) * birthMul) / 1000);
-    rate = Math.floor((rate * SEASON_BIRTH[season]) / 1000) + 120; // settlers keep arriving while there is room
+    let rate = Math.floor((people * (12 + Math.floor((20 * p.nature) / 1000)) * birthMul) / 1000);
+    rate = Math.floor((rate * SEASON_BIRTH[season]) / 1000) + 350; // settlers keep arriving while there is room
     p.acc += rate;
     while (p.acc >= 1000 && people < cap) { people++; p.acc -= 1000; }
     if (people >= cap) p.acc = 0;
