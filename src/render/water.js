@@ -69,6 +69,8 @@ const WATER_FS = /* glsl */ `
     col = mix(col, foamC, clamp(foam, 0.0, 1.0));
     float alpha = mix(0.6, 0.96, smoothstep(0.0, 2.5, depth));
     alpha = max(alpha, foam);
+    // Fade out where the water thins to nothing, so the shoreline is soft (waterfalls stay solid).
+    alpha *= max(smoothstep(0.0, 0.08, depth), fall);
     gl_FragColor = vec4(col, alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -101,15 +103,64 @@ export class Water {
       if (k === WKIND.LAKE || k === WKIND.RIVER) surf[v] = hY(world.surf[v]);
     }
     const inland = (i) => world.water[i] === WKIND.LAKE || world.water[i] === WKIND.RIVER;
-    // Dry vertices on the edge of inland water: borrow the lowest neighboring surface.
+    // Smooth shores: the surface reaches RING cells past the water cells, and the sloping bank hides
+    // it, so the shoreline follows the terrain contour instead of cell edges. Dry vertices take the
+    // level of the nearest water vertex (breadth-first).
+    const RING = 1;
+    // Inside water cells, dry corners take the cell's lowest water level (as the game always did).
     const filled = surf.slice();
+    const ofWaterCell = new Uint8Array(V * V);
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       if (!inland(z * N + x)) continue;
       const vs = [z * V + x, z * V + x + 1, (z + 1) * V + x, (z + 1) * V + x + 1];
       let lo = Infinity;
-      for (const v of vs) if (!Number.isNaN(surf[v])) lo = Math.min(lo, surf[v]);
+      for (const v of vs) { ofWaterCell[v] = 1; if (!Number.isNaN(surf[v])) lo = Math.min(lo, surf[v]); }
       if (lo === Infinity) lo = Math.max(...vs.map((v) => hY(world.H[v]))) - 0.05;
       for (const v of vs) if (Number.isNaN(filled[v])) filled[v] = lo;
+    }
+    // Ring vertices take the level of the nearest water-cell vertex (breadth-first; equally near: the lower).
+    const layer = new Int8Array(V * V).fill(-1);
+    let frontier = [];
+    for (let v = 0; v < V * V; v++) if (!Number.isNaN(filled[v])) { frontier.push(v); layer[v] = 0; }
+    for (let step = 1; step <= 2 * RING + 2 && frontier.length; step++) {
+      const next = [];
+      for (const v of frontier) {
+        const x = v % V, z = (v / V) | 0;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, nz = z + dz;
+          if (nx < 0 || nz < 0 || nx >= V || nz >= V) continue;
+          const u = nz * V + nx;
+          if (layer[u] === -1) { layer[u] = step; filled[u] = filled[v]; next.push(u); }
+          else if (layer[u] === step) filled[u] = Math.min(filled[u], filled[v]);
+        }
+      }
+      frontier = next;
+    }
+    const nearWater = new Uint8Array(N * N);
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      if (!inland(z * N + x)) continue;
+      for (let dz = -RING; dz <= RING; dz++) for (let dx = -RING; dx <= RING; dx++) {
+        const cx = x + dx, cz = z + dz;
+        if (cx >= 0 && cz >= 0 && cx < N && cz < N && world.water[cz * N + cx] !== WKIND.SEA) nearWater[cz * N + cx] = 1;
+      }
+    }
+    const cellVs = (x, z) => [z * V + x, z * V + x + 1, (z + 1) * V + x, (z + 1) * V + x + 1];
+    const isMesh = new Uint8Array(N * N);
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++)
+      if (nearWater[z * N + x] && cellVs(x, z).every((v) => !Number.isNaN(filled[v]))) isMesh[z * N + x] = 1;
+    const meshCell = (x, z) => isMesh[z * N + x] === 1;
+    // Real water cells keep their level. Ring vertices keep it only where the bank rises above it
+    // (the bank then hides the surface along a smooth contour); anywhere lower (flat lake margins,
+    // beside a waterfall) and wherever the mesh ends, they are tucked just under the ground, so no
+    // water shows over land the game treats as dry.
+    for (let vz = 0; vz < V; vz++) for (let vx = 0; vx < V; vx++) {
+      const v = vz * V + vx;
+      if (ofWaterCell[v] || Number.isNaN(filled[v])) continue;
+      let border = false;
+      for (const [cx, cz] of [[vx - 1, vz - 1], [vx, vz - 1], [vx - 1, vz], [vx, vz]])
+        if (cx < 0 || cz < 0 || cx >= N || cz >= N || !isMesh[cz * N + cx]) border = true;
+      const g = hY(world.H[v]);
+      if (border || g < filled[v]) filled[v] = Math.min(filled[v], g - 0.01);
     }
     const pos = [], flow = [], river = [], index = [];
     const map = new Int32Array(V * V).fill(-1);
@@ -126,7 +177,7 @@ export class Water {
       return map[v];
     };
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-      if (!inland(z * N + x)) continue;
+      if (!meshCell(x, z)) continue;
       const a = vert(z * V + x), b = vert(z * V + x + 1), c = vert((z + 1) * V + x), d = vert((z + 1) * V + x + 1);
       index.push(a, c, b, b, c, d);
     }

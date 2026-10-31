@@ -119,10 +119,16 @@ Painterly and stylised, fully procedural, no art assets:
 - Trees: recursive branching broadleaves with fluffy leaf clumps (normals pointing away from
   the clump centre), and layered conifers. Seeded variants, wind sway, seasonal colours,
   leaves that fall in autumn, snow on top. Distant trees are billboard impostors rendered
-  from the same models.
+  from the same models. Trees beside a building are drawn as one smaller tree nudged away
+  from it, and trees beside water are nudged away from it, so crowns stay out of buildings and
+  trunks out of the water. (The sim already keeps building footprints treeless.)
 - GPU-instanced grass and flowers around the player, read from data textures.
 - Water: depth colour, shore foam, sky reflection, flowing normals along river flow, foam
-  streaks on waterfalls, and mist.
+  streaks on waterfalls, and mist. Smooth shores: the lake and river surface reaches one cell
+  past the water cells and the rising bank hides it, so the shoreline follows the terrain
+  contour instead of cell edges; it fades out where the water thins to nothing. Where the land
+  is lower than the water (flat lake margins, beside waterfalls) the extra surface is tucked
+  under the ground, so no water shows over land the game treats as dry.
 - Buildings: a shape grammar per type driven by size and seed (cottages with gable roofs,
   chimneys and lit windows; barns, silos, haystacks, fences; sawmills with log piles and
   water wheels; reserves with lanterns and gazebos). Each flies a banner in its owner's colour.

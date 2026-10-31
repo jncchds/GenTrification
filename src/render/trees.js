@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { N, BIOME } from '../sim/world.js';
 import { hash3 } from '../sim/prng.js';
+import { T } from '../sim/rules.js';
 import { HALF, heightAt, frand, GLSL_COMMON, GLSL_CLOUDSHADOW, getNoiseTexture } from './common.js';
 import { GLSL_SEASON } from './terrain.js';
 
@@ -356,16 +357,37 @@ export class Trees {
     const highN = new Int32Array(VARIANTS), nearN = new Int32Array(VARIANTS), farN = new Int32Array(VARIANTS);
     const { trees, occ } = state, cap = this.world.cap, slot = this.slot;
     const r2 = this.lodR * this.lodR, h2 = this.highR * this.highR, cx = center.x, cz = center.y;
+    // A building (not a reserve) or water on this cell? Trees next to one are kept clear of it.
+    const water = this.world.water;
+    const solid = (x, y) => {
+      if (x < 0 || y < 0 || x >= N || y >= N) return 0;
+      const id = occ[y * N + x];
+      if (id > 0 && state.buildings[id - 1].type !== T.PARK) return 2;
+      return water[y * N + x] ? 1 : 0;
+    };
     for (let i = 0; i < N * N; i++) {
       const t = trees[i];
       if (t < 60 || occ[i]) continue;
       const fill = Math.min(1, t / Math.max(cap[i], 1));
-      for (let k = 0; k < 2; k++) {
+      // Push away from neighbouring buildings: one smaller tree, shifted off the sides that touch one.
+      const gx = i % N, gz = (i / N) | 0;
+      let px = 0, pz = 0, near = 0;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const k = dx || dz ? solid(gx + dx, gz + dz) : 0;
+        if (k) { px -= dx; pz -= dz; near = Math.max(near, k); }
+      }
+      for (let k = 0; k < (near ? 1 : 2); k++) {
         const j = i * 2 + k;
         if (t < this.thresh[j]) continue;
         const o = j * 6, v = this.variant[j];
-        const x = slot[o], y = slot[o + 1], z = slot[o + 2];
-        const size = slot[o + 4] * (0.5 + 0.5 * fill);
+        let x = slot[o], y = slot[o + 1], z = slot[o + 2];
+        let size = slot[o + 4] * (0.5 + 0.5 * fill);
+        if (near) {
+          const l = Math.hypot(px, pz) || 1;
+          x = gx - HALF + 0.5 + (px / l) * 0.3; z = gz - HALF + 0.5 + (pz / l) * 0.3;
+          y = heightAt(this.world, x, z) - 0.05;
+          size *= near === 2 ? 0.6 : 0.85; // smaller by buildings; by water just keep the trunk dry
+        }
         const dx = x - cx, dz = z - cz, d2 = dx * dx + dz * dz;
         const tier = d2 < h2 ? 0 : d2 < r2 ? 1 : 2;
         const mesh = tier === 0 ? this.high[v] : tier === 1 ? this.near[v] : this.far[v];
